@@ -6,7 +6,7 @@
 
 **JSON SubLayer** is a professional web-based subtitle editor designed to fill a critical gap in the viral video automation workflow: **millimetric precision of word-level timestamps**.
 
-![Editor Interface](https://via.placeholder.com/1200x600/1e2124/7289da?text=JSON+SubLayer+Interface)
+<img width="2507" height="950" alt="image" src="https://github.com/user-attachments/assets/9c6d0cea-6bbb-485e-a1d0-9c696d76397c" />
 
 ## 💡 Why does this project exist?
 
@@ -68,3 +68,4 @@ This project is hosted on GitHub Pages and runs entirely on the client-side.
 
 ---
 **JSON SubLayer for WhisperX** - The key piece for perfect subtitles in [ViralCutter](https://github.com/rafaelgodoyebert/ViralCutter). 🎯🎞️
+
