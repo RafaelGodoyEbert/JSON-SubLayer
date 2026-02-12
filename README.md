@@ -8,7 +8,7 @@
 
 ### 🚀 [TESTAR ONLINE AGORA](https://rafaelgodoyebert.github.io/JSON-SubLayer/)
 
-<img width="2507" height="950" alt="image" src="https://github.com/user-attachments/assets/9c6d0cea-6bbb-485e-a1d0-9c696d76397c" />
+<img width="2500" height="895" alt="image" src="https://github.com/user-attachments/assets/2c41624f-cd53-4c33-8222-de45312e221b" />
 
 ## 💡 Por que este projeto existe?
 
@@ -69,3 +69,4 @@ Este projeto é hospedado no GitHub Pages e roda inteiramente no lado do cliente
 
 ---
 **JSON SubLayer for WhisperX** - A peça chave para legendas perfeitas no [ViralCutter](https://github.com/rafaelgodoyebert/ViralCutter). 🎯🎞️
+
