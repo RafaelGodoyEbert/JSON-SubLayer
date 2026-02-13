@@ -1360,41 +1360,85 @@ document.addEventListener('DOMContentLoaded', () => {
         updateState({ selectedSubtitles: [] });
     }
 
-    async function handleSplit() {
+    function handleSplit() {
         const subtitleToSplit = state.selectedSubtitles.length === 1
             ? state.selectedSubtitles[0]
             : state.subtitles.find(sub => state.cursorPosition > sub.start && state.cursorPosition < sub.end);
 
         if (!subtitleToSplit) return;
 
-        const response = await fetch('/api/split-subtitle', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                subtitle: subtitleToSplit,
-                splitTime: state.cursorPosition,
-                charLevel: state.zoomLevel >= CHAR_ZOOM_THRESHOLD
-            })
-        });
+        const splitTime = state.cursorPosition;
 
-        if (!response.ok) {
-            console.error("Falha ao dividir a legenda");
-            return;
+        // Evita divisões muito próximas das bordas (0.05s de tolerância)
+        if (splitTime <= subtitleToSplit.start + 0.05 || splitTime >= subtitleToSplit.end - 0.05) return;
+
+        let beforeText = "";
+        let afterText = "";
+        let beforeWords = [];
+        let afterWords = [];
+
+        // Se tiver palavras (WhisperX), divide respeitando limites das palavras
+        if (subtitleToSplit.words && subtitleToSplit.words.length > 0) {
+            let splitIndex = 0;
+
+            for (let i = 0; i < subtitleToSplit.words.length; i++) {
+                const w = subtitleToSplit.words[i];
+                // Se o cursor estiver antes do MEIO da palavra, corta antes dela
+                // Se estiver depois do MEIO, a palavra fica no primeiro bloco
+                const wordCenter = (w.start + w.end) / 2;
+                if (splitTime < wordCenter) {
+                    splitIndex = i;
+                    break;
+                }
+                // Se for a última palavra e passou do meio, o corte é após a última
+                if (i === subtitleToSplit.words.length - 1) {
+                    splitIndex = subtitleToSplit.words.length;
+                }
+            }
+
+            beforeWords = subtitleToSplit.words.slice(0, splitIndex);
+            afterWords = subtitleToSplit.words.slice(splitIndex);
+
+            beforeText = beforeWords.map(w => w.word).join(' ').trim();
+            afterText = afterWords.map(w => w.word).join(' ').trim();
+        } else {
+            // Sem palavras: divide texto proporcionalmente ao tempo
+            const duration = subtitleToSplit.end - subtitleToSplit.start;
+            const progress = (splitTime - subtitleToSplit.start) / duration;
+            const text = subtitleToSplit.text || "";
+            // Garante índice válido
+            const splitCharIndex = Math.max(0, Math.min(text.length, Math.round(text.length * progress)));
+
+            beforeText = text.substring(0, splitCharIndex).trim();
+            afterText = text.substring(splitCharIndex).trim();
         }
 
-        const [before, after] = await response.json();
+        // Cria novos objetos de legenda
+        const sub1 = {
+            ...subtitleToSplit,
+            id: generateId(),
+            end: splitTime,
+            text: beforeText,
+            words: beforeWords,
+            chars: [] // Limpa chars para regenerar se necessário
+        };
 
-        // Atribui novos IDs únicos para evitar colisão
-        before.id = generateId();
-        after.id = generateId();
+        const sub2 = {
+            ...subtitleToSplit,
+            id: generateId(),
+            start: splitTime,
+            text: afterText,
+            words: afterWords,
+            chars: []
+        };
 
+        // Substitui a original pelas duas novas
         const index = state.subtitles.findIndex(s => s.id === subtitleToSplit.id);
         if (index === -1) return;
 
         const newSubs = [...state.subtitles];
-        newSubs.splice(index, 1, before, after);
+        newSubs.splice(index, 1, sub1, sub2);
 
-        // Atualiza as legendas e limpa a seleção para forçar o usuário a re-selecionar o lado que deseja editar
         updateSubtitles(newSubs);
         updateState({ selectedSubtitles: [] });
     }
