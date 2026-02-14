@@ -93,7 +93,7 @@ const I18N_DATA = {
         "close": "Close",
         "results_count": "results",
         "no_results": "No results found"
-    }
+    },
     "es": {
         "import_json": "Importar JSON",
         "import_media": "Importar multimedia",
@@ -142,3 +142,4 @@ const I18N_DATA = {
         "no_results": "No se encontraron resultados"
     }
 };
+
