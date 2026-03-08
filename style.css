@@ -19,6 +19,12 @@
   z-index: 1000;
 }
 
+/* --- Mobile Header --- */
+.mobile-header {
+  display: none;
+  /* Hidden on Desktop */
+}
+
 .controls {
   padding: 10px;
   display: flex;
@@ -324,25 +330,38 @@
 }
 
 .resize-handle {
-  width: 6px;
+  width: 15px;
   height: 100%;
-  background: #4e5d94;
+  background: transparent;
   cursor: ew-resize;
   position: absolute;
   top: 0;
   transition: background 0.2s;
 }
 
-.resize-handle:hover {
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: #4e5d94;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.resize-handle:hover::after {
   background: #99aab5;
 }
 
 .resize-handle.left {
-  left: 0;
+  left: -5px;
+  /* offset to center hit box */
 }
 
 .resize-handle.right {
-  right: 0;
+  right: -5px;
+  /* offset to center hit box */
 }
 
 .context-menu {
@@ -403,6 +422,9 @@ code {
   box-sizing: border-box;
   overflow: hidden;
   white-space: nowrap;
+  min-width: 0;
+  flex: none;
+  /* CRÍTICO: impede o flexbox de redistribuir larguras durante o drag */
   /* Borda sutil que servirá como o separador visual */
   border-right: 1px solid rgba(255, 255, 255, 0.3);
 }
@@ -415,13 +437,14 @@ code {
 .word-handle {
   position: absolute;
   top: 0;
-  right: -3px;
+  right: -7px;
   /* Centralizado sobre a borda */
   bottom: 0;
-  width: 6px;
+  width: 15px;
   /* Área de clique maior */
   cursor: ew-resize;
   z-index: 15;
+  background: transparent;
   /* Acima do bloco, mas abaixo do cursor principal */
   /* background: rgba(255,0,0,0.2); */
   /* Descomente para depurar a área de clique */
@@ -472,10 +495,11 @@ code {
 .char-handle {
   position: absolute;
   top: 0;
-  right: -3px;
+  right: -7px;
   bottom: 0;
-  width: 6px;
+  width: 15px;
   cursor: ew-resize;
+  background: transparent;
   z-index: 16;
   /* Acima do handle da palavra */
 }
@@ -672,4 +696,107 @@ code {
   color: black;
   font-weight: bold;
   padding: 2px 0;
+}
+
+/* --- Responsividade (Mobile) --- */
+@media (max-width: 768px) {
+  .app {
+    overflow: hidden;
+  }
+
+  .mobile-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #151719;
+    color: white;
+    padding: 10px 15px;
+    border-bottom: 1px solid #333;
+    z-index: 1000;
+  }
+
+  .mobile-title {
+    font-weight: bold;
+    font-size: 16px;
+    letter-spacing: 1px;
+    color: #7289da;
+  }
+
+  .hamburger-btn {
+    background: transparent;
+    border: none;
+    color: white;
+    font-size: 24px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 5px;
+  }
+
+  .controls {
+    display: none;
+    /* Esconde botões no celular por padrão */
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: 15px 10px;
+    gap: 8px;
+    position: absolute;
+    top: 45px;
+    /* Altura do mobile header */
+    left: 0;
+    right: 0;
+    background: rgba(35, 39, 42, 0.95);
+    z-index: 999;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+    max-height: calc(100vh - 45px);
+    overflow-y: auto;
+    border-bottom: 1px solid #555;
+    backdrop-filter: blur(5px);
+  }
+
+  .controls.open {
+    display: flex;
+  }
+
+  .controls button,
+  .controls select,
+  .track-controls,
+  label,
+  #zoom-indicator {
+    font-size: 13px;
+    margin: 2px !important;
+    padding: 8px 10px;
+  }
+
+  .workspace {
+    grid-template-areas:
+      "video"
+      "editor"
+      "timeline";
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 35vh 1fr 180px !important;
+    overflow-y: auto;
+    overflow-x: hidden;
+    height: calc(100vh - 45px);
+    /* Ajuste subtraindo o mobile header */
+  }
+
+  .workspace.layout-916 {
+    grid-template-areas:
+      "video"
+      "editor"
+      "timeline";
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 45vh 1fr 180px !important;
+  }
+
+  /* Esconde resizers no celular pois o layout é empilhado */
+  .resizer-h,
+  .resizer-v {
+    display: none !important;
+  }
+
+  .footer-credit {
+    font-size: 10px;
+    padding: 8px 0;
+  }
 }

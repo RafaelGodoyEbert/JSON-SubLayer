@@ -62,6 +62,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const replaceStatus = document.getElementById('replace-status');
     const closeReplaceBtn = document.getElementById('close-replace');
 
+    // Referências Menu Mobile
+    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+    const mainControls = document.getElementById('main-controls');
+
+    if (mobileMenuBtn && mainControls) {
+        mobileMenuBtn.addEventListener('click', () => {
+            mainControls.classList.toggle('open');
+        });
+    }
+
+    // --- Helpers de Touch/Mouse ---
+    function getClientX(e) { return e.touches && e.touches.length > 0 ? e.touches[0].clientX : e.clientX; }
+    function getClientY(e) { return e.touches && e.touches.length > 0 ? e.touches[0].clientY : e.clientY; }
+
     // --- Estado da Aplicação ---
     let state = {
         subtitles: [],
@@ -80,7 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
         waveformData: null,
         audioDuration: 0,
         autoGenerateChars: true,
-        tracks: ['Track 1', 'Track 2'],
+        tracks: ['Track 1'],
         activeTrack: 'Track 1',
         hiddenTracks: [], // Trilhas ocultas no preview
         language: 'pt-br'
@@ -401,15 +415,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const leftHandle = document.createElement('div');
             leftHandle.className = 'resize-handle left';
             leftHandle.addEventListener('mousedown', (e) => handleResizeStart(e, index, 'left'));
+            leftHandle.addEventListener('touchstart', (e) => handleResizeStart(e, index, 'left'), { passive: false });
 
             const rightHandle = document.createElement('div');
             rightHandle.className = 'resize-handle right';
             rightHandle.addEventListener('mousedown', (e) => handleResizeStart(e, index, 'right'));
+            rightHandle.addEventListener('touchstart', (e) => handleResizeStart(e, index, 'right'), { passive: false });
 
             // Área de arrastar que conterá a visualização apropriada
             const dragArea = document.createElement('div');
             dragArea.className = 'drag-area';
             dragArea.addEventListener('mousedown', (e) => handleMoveStart(e, index));
+            dragArea.addEventListener('touchstart', (e) => handleMoveStart(e, index), { passive: false });
 
             // --- LÓGICA DE VISUALIZAÇÃO DE 3 NÍVEIS ---
             const showCharLevel = state.zoomLevel >= CHAR_ZOOM_THRESHOLD;
@@ -443,6 +460,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             const charHandle = document.createElement('div');
                             charHandle.className = 'char-handle';
                             charHandle.addEventListener('mousedown', (e) => handleCharResizeStart(e, index, charIdx));
+                            charHandle.addEventListener('touchstart', (e) => handleCharResizeStart(e, index, charIdx), { passive: false });
                             charEl.appendChild(charHandle);
                         }
                     }
@@ -454,22 +472,64 @@ document.addEventListener('DOMContentLoaded', () => {
                 const wordContainer = document.createElement('div');
                 wordContainer.className = 'word-container';
 
-                sub.words.forEach((word, wordIdx) => {
+                const wordsToShow = sub.words;
+
+                // Calcula tempo TOTAL das palavras (sem lacunas inter-word)
+                // para que as palavras preencham 100% do bloco visualmente
+                let totalWordTime = 0;
+                wordsToShow.forEach(w => {
+                    let ws = w.start, we = w.end;
+                    if (ws === undefined || we === undefined) {
+                        const subDur = sub.end - sub.start;
+                        ws = sub.start + (subDur / wordsToShow.length) * wordsToShow.indexOf(w);
+                        we = sub.start + (subDur / wordsToShow.length) * (wordsToShow.indexOf(w) + 1);
+                    }
+                    totalWordTime += (we - ws);
+                });
+                if (totalWordTime <= 0) totalWordTime = sub.end - sub.start;
+
+                wordsToShow.forEach((word, wordIdx) => {
                     const wordEl = document.createElement('div');
                     wordEl.className = 'word';
+
+                    let wStart = word.start;
+                    let wEnd = word.end;
+
+                    if (wStart === undefined || wEnd === undefined) {
+                        const sStart = sub.start;
+                        const sEnd = sub.end;
+                        const subDuration = sEnd - sStart;
+                        wStart = sStart + (subDuration / wordsToShow.length) * wordIdx;
+                        wEnd = sStart + (subDuration / wordsToShow.length) * (wordIdx + 1);
+                    }
+
+                    const wordDuration = wEnd - wStart;
+                    const widthPercent = (wordDuration / totalWordTime) * 100;
+
+                    wordEl.style.width = `${widthPercent}%`;
                     wordEl.textContent = word.word;
 
-                    const wordWidth = (word.end - word.start) * PIXELS_PER_SECOND * state.zoomLevel;
-                    wordEl.style.width = `${wordWidth}px`;
+                    // Adiciona a classe de busca se aplicável
+                    if (typeof searchResults !== 'undefined' && currentSearchIndex >= 0 && searchResults.length > 0) {
+                        const isMatch = searchResults.some(res =>
+                            res.subtitle.id === sub.id &&
+                            res.type === 'word' &&
+                            res.index === wordIdx
+                        );
+                        if (isMatch) wordEl.classList.add('search-highlight-word');
+                    }
 
-                    // Adiciona handle entre palavras
-                    if (wordIdx < sub.words.length - 1) {
+                    wordContainer.appendChild(wordEl);
+
+                    // Só adiciona a alça (resizer) caso seja adjacente perfeitamente à próxima palavra, 
+                    // ou simplesmente se houver palavra seguinte, podemos permitir o redimensionamento.
+                    if (wordIdx < wordsToShow.length - 1) {
                         const wordHandle = document.createElement('div');
                         wordHandle.className = 'word-handle';
                         wordHandle.addEventListener('mousedown', (e) => handleWordResizeStart(e, index, wordIdx));
+                        wordHandle.addEventListener('touchstart', (e) => handleWordResizeStart(e, index, wordIdx), { passive: false });
                         wordEl.appendChild(wordHandle);
                     }
-                    wordContainer.appendChild(wordEl);
                 });
                 dragArea.appendChild(wordContainer);
             } else {
@@ -486,6 +546,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
             block.addEventListener('click', (e) => handleSelectSubtitle(e, sub));
             block.addEventListener('contextmenu', (e) => handleContextMenu(e, sub));
+
+            // Long press para abrir context menu no mobile
+            let pressTimer;
+            block.addEventListener('touchstart', (e) => {
+                pressTimer = setTimeout(() => {
+                    handleContextMenu(e, sub);
+                }, 500); // 500ms long press
+            });
+            block.addEventListener('touchend', () => { clearTimeout(pressTimer); });
+            block.addEventListener('touchmove', () => { clearTimeout(pressTimer); });
 
             timelineContent.appendChild(block);
         });
@@ -947,52 +1017,135 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Lógica de Interação da Timeline ---
     function handleWordResizeStart(e, subtitleIndex, wordIndex) {
         e.stopPropagation();
-        const startX = e.clientX;
-        const minDuration = 0.05; // Duração mínima para uma palavra
+        if (e.type === 'touchstart') e.preventDefault();
+        const startX = getClientX(e);
+        const minDuration = 0.001; // Duração hiper mínima
 
-        // Faz uma cópia profunda para evitar mutação durante o arraste
         const originalSubs = JSON.parse(JSON.stringify(state.subtitles));
         const subtitle = originalSubs[subtitleIndex];
-        const currentWord = subtitle.words[wordIndex];
-        const nextWord = subtitle.words[wordIndex + 1];
+        const words = subtitle.words;
+        const currentWord = words[wordIndex];
+        const nextWord = words[wordIndex + 1];
+        const originalBoundary = currentWord.end;
+        const subStart = subtitle.start;
+        const subEnd = subtitle.end;
+        const subDuration = subEnd - subStart;
 
-        function onMouseMove(moveEvent) {
-            const deltaX = (moveEvent.clientX - startX) / (PIXELS_PER_SECOND * state.zoomLevel);
+        // Calcula totalWordTime para CSS widths (mesma lógica do render)
+        let totalWordTime = 0;
+        words.forEach(w => {
+            if (w.start !== undefined && w.end !== undefined) {
+                totalWordTime += (w.end - w.start);
+            }
+        });
+        if (totalWordTime <= 0) totalWordTime = subDuration;
 
-            // Calcula o novo tempo de divisão, garantindo durações mínimas
-            let newBoundary = currentWord.end + deltaX;
-            newBoundary = Math.max(newBoundary, currentWord.start + minDuration);
-            newBoundary = Math.min(newBoundary, nextWord.end - minDuration);
-
-            // Atualiza os tempos na nossa cópia
-            const tempSubs = JSON.parse(JSON.stringify(originalSubs));
-            tempSubs[subtitleIndex].words[wordIndex].end = newBoundary;
-            tempSubs[subtitleIndex].words[wordIndex + 1].start = newBoundary;
-
-            // Atualiza a UI sem salvar no histórico
-            updateSubtitles(tempSubs, false);
+        // Calcula o limite REAL máximo para a direita:
+        // Cascateia pelas palavras seguintes até o fim do bloco
+        let trueMaxBoundary;
+        const isLastWord = (wordIndex + 1 === words.length - 1);
+        if (isLastWord) {
+            // A próxima palavra é a última: pode ir até o fim do bloco
+            trueMaxBoundary = subEnd - minDuration;
+        } else {
+            // Pega o espaço disponível cascateando: cada palavra subsequente
+            // pode ser comprimida até minDuration
+            let maxAvailable = subEnd;
+            for (let i = words.length - 1; i > wordIndex + 1; i--) {
+                maxAvailable -= minDuration; // cada palavra precisa de pelo menos minDuration
+            }
+            trueMaxBoundary = maxAvailable - minDuration; // espaço para nextWord
         }
 
-        function onMouseUp() {
+        // Limite mínimo: currentWord deve ter pelo menos minDuration
+        const trueMinBoundary = currentWord.start + minDuration;
+
+        // Localiza os elementos DOM para atualização direta
+        const blockEl = timelineContent.querySelectorAll('.subtitle-block')[subtitleIndex];
+        let wordEls = null;
+        if (blockEl) {
+            wordEls = blockEl.querySelectorAll('.word');
+        }
+
+        function onMouseMove(moveEvent) {
+            if (moveEvent.type === 'touchmove') moveEvent.preventDefault();
+            const currentX = getClientX(moveEvent);
+            const deltaX = (currentX - startX) / (PIXELS_PER_SECOND * state.zoomLevel);
+
+            let newBoundary = originalBoundary + deltaX;
+            newBoundary = Math.max(newBoundary, trueMinBoundary);
+            newBoundary = Math.min(newBoundary, trueMaxBoundary);
+
+            // Calcula os novos tempos de cada palavra afetada
+            // A palavra atual (currentWord) tem seu end ajustado
+            const newCurrentEnd = newBoundary;
+            // A próxima palavra tem seu start ajustado
+            let newNextStart = newBoundary;
+            // Se a boundary foi empurrada além do nextWord.end original,
+            // precisamos expandir o nextWord.end (e cascatear)
+            let newNextEnd = Math.max(nextWord.end, newBoundary + minDuration);
+
+            // Se não é a última, cascateia as palavras seguintes
+            if (!isLastWord) {
+                for (let i = wordIndex + 2; i < words.length; i++) {
+                    const w = words[i];
+                    const prevEnd = (i === wordIndex + 2) ? newNextEnd : words[i - 1].end;
+                    if (w.start < newNextEnd) {
+                        // Empurra esta palavra
+                        const wDuration = Math.max(w.end - w.start, minDuration);
+                        words[i] = { ...w, start: newNextEnd, end: Math.max(newNextEnd + minDuration, w.end) };
+                        newNextEnd = words[i].end;
+                    }
+                }
+            }
+
+            // Atualiza APENAS o CSS dos elementos DOM existentes (sem re-render!)
+            if (wordEls) {
+                // Atualiza a palavra atual
+                if (wordEls[wordIndex]) {
+                    const dur = newCurrentEnd - currentWord.start;
+                    wordEls[wordIndex].style.width = `${(dur / totalWordTime) * 100}%`;
+                }
+                // Atualiza a próxima palavra
+                if (wordEls[wordIndex + 1]) {
+                    const dur = newNextEnd - newNextStart;
+                    wordEls[wordIndex + 1].style.width = `${(dur / totalWordTime) * 100}%`;
+                }
+            }
+
+            // Guarda os valores calculados para uso no mouseup
+            onMouseMove._lastBoundary = newBoundary;
+            onMouseMove._newNextEnd = newNextEnd;
+        }
+        onMouseMove._lastBoundary = originalBoundary;
+        onMouseMove._newNextEnd = nextWord.end;
+
+        function onMouseUp(event) {
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
+            document.removeEventListener('touchmove', onMouseMove);
+            document.removeEventListener('touchend', onMouseUp);
 
-            // Agora que a operação terminou, fazemos a atualização final
-            // e salvamos no histórico
-            const finalSubs = JSON.parse(JSON.stringify(state.subtitles)); // Pega o estado mais recente
-            const finalSubtitle = finalSubs[subtitleIndex];
-            const finalWord = finalSubtitle.words[wordIndex];
-            const finalNextWord = finalSubtitle.words[wordIndex + 1];
+            const finalBoundary = onMouseMove._lastBoundary;
+            const finalNextEnd = onMouseMove._newNextEnd;
 
-            // Recalcula a fronteira uma última vez
-            const deltaX = (event.clientX - startX) / (PIXELS_PER_SECOND * state.zoomLevel);
-            let finalBoundary = currentWord.end + deltaX;
-            finalBoundary = Math.max(finalBoundary, currentWord.start + minDuration);
-            finalBoundary = Math.min(finalBoundary, nextWord.end - minDuration);
+            // Persiste as mudanças no estado e re-renderiza
+            const finalSubs = JSON.parse(JSON.stringify(originalSubs));
+            const finalWords = finalSubs[subtitleIndex].words;
 
-            // Atualiza o objeto final
-            finalWord.end = finalBoundary;
-            finalNextWord.start = finalBoundary;
+            finalWords[wordIndex].end = finalBoundary;
+            finalWords[wordIndex + 1].start = finalBoundary;
+            finalWords[wordIndex + 1].end = finalNextEnd;
+
+            // Cascateia as palavras seguintes se necessário
+            for (let i = wordIndex + 2; i < finalWords.length; i++) {
+                const prevEnd = finalWords[i - 1].end;
+                if (finalWords[i].start < prevEnd) {
+                    const origDur = Math.max(words[i].end - words[i].start, minDuration);
+                    finalWords[i].start = prevEnd;
+                    finalWords[i].end = Math.max(prevEnd + minDuration, finalWords[i].end);
+                }
+            }
 
             // Finalmente, atualiza o estado e grava no histórico
             updateSubtitles(finalSubs, true);
@@ -1000,11 +1153,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.addEventListener('mousemove', onMouseMove);
         document.addEventListener('mouseup', onMouseUp);
+        document.addEventListener('touchmove', onMouseMove, { passive: false });
+        document.addEventListener('touchend', onMouseUp);
     }
 
     function handleCharResizeStart(e, subtitleIndex, charIndex) {
         e.stopPropagation();
-        const startX = e.clientX;
+        if (e.type === 'touchstart') e.preventDefault();
+        const startX = getClientX(e);
         const minDuration = 0.001; // Duração mínima para um caractere
 
         const originalSubs = JSON.parse(JSON.stringify(state.subtitles));
@@ -1013,7 +1169,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const nextChar = subtitle.chars[charIndex + 1];
 
         function onMouseMove(moveEvent) {
-            const deltaX = (moveEvent.clientX - startX) / (PIXELS_PER_SECOND * state.zoomLevel);
+            const currentX = getClientX(moveEvent);
+            const deltaX = (currentX - startX) / (PIXELS_PER_SECOND * state.zoomLevel);
 
             let newBoundary = currentChar.end + deltaX;
             newBoundary = Math.max(newBoundary, currentChar.start + minDuration);
@@ -1029,12 +1186,15 @@ document.addEventListener('DOMContentLoaded', () => {
         function onMouseUp(event) {
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
+            document.removeEventListener('touchmove', onMouseMove);
+            document.removeEventListener('touchend', onMouseUp);
 
             const finalSubs = JSON.parse(JSON.stringify(state.subtitles));
             const finalSubtitle = finalSubs[subtitleIndex];
 
             // Recalcula a fronteira final para precisão máxima
-            const finalDeltaX = (event.clientX - startX) / (PIXELS_PER_SECOND * state.zoomLevel);
+            const currentX = event.changedTouches ? event.changedTouches[0].clientX : event.clientX;
+            const finalDeltaX = (currentX - startX) / (PIXELS_PER_SECOND * state.zoomLevel);
             let finalBoundary = currentChar.end + finalDeltaX;
             finalBoundary = Math.max(finalBoundary, currentChar.start + minDuration);
             finalBoundary = Math.min(finalBoundary, nextChar.end - minDuration);
@@ -1047,19 +1207,84 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.addEventListener('mousemove', onMouseMove);
         document.addEventListener('mouseup', onMouseUp);
+        document.addEventListener('touchmove', onMouseMove, { passive: false });
+        document.addEventListener('touchend', onMouseUp);
+    }
+
+    function getSnapPoints(ignoreSubId) {
+        const points = [0, state.cursorPosition];
+        state.subtitles.forEach(sub => {
+            if (sub.id !== ignoreSubId) {
+                points.push(sub.start);
+                points.push(sub.end);
+            }
+        });
+        return points;
+    }
+
+    function findSnap(time, snapPoints) {
+        // Find closest snap point within 15 pixels threshold
+        const thresholdTime = 15 / (PIXELS_PER_SECOND * state.zoomLevel);
+        let closestDist = thresholdTime;
+        let snapTime = time;
+
+        snapPoints.forEach(pt => {
+            const dist = Math.abs(pt - time);
+            if (dist < closestDist) {
+                closestDist = dist;
+                snapTime = pt;
+            }
+        });
+        return snapTime;
     }
 
     function handleMoveStart(e, index) {
         e.stopPropagation();
-        const startX = e.clientX;
+        if (e.type === 'touchstart') e.preventDefault();
+        const startX = getClientX(e);
         const initialSub = state.subtitles[index];
         const initialStart = initialSub.start;
 
         function onMouseMove(moveEvent) {
-            const deltaX = (moveEvent.clientX - startX) / (PIXELS_PER_SECOND * state.zoomLevel);
-            const newStart = Math.max(0, initialStart + deltaX);
+            const currentX = getClientX(moveEvent);
+            const deltaX = (currentX - startX) / (PIXELS_PER_SECOND * state.zoomLevel);
+            let newStart = Math.max(0, initialStart + deltaX);
             const duration = initialSub.end - initialSub.start;
-            const newEnd = newStart + duration;
+            let newEnd = newStart + duration;
+
+            if (!moveEvent.altKey) {
+                const snapPoints = getSnapPoints(initialSub.id);
+                const snappedStart = findSnap(newStart, snapPoints);
+                const snappedEnd = findSnap(newEnd, snapPoints);
+
+                if (snappedStart !== newStart && Math.abs(snappedStart - newStart) <= Math.abs(snappedEnd - newEnd)) {
+                    newStart = snappedStart;
+                    newEnd = newStart + duration;
+                } else if (snappedEnd !== newEnd) {
+                    newEnd = snappedEnd;
+                    newStart = newEnd - duration;
+                }
+            }
+
+            // --- Lógica antiborreamento (Prevenir sobreposição) ---
+            const trackSubs = state.subtitles.filter(s => (s.track || 'Track 1') === (initialSub.track || 'Track 1') && s.id !== initialSub.id);
+            let minStart = 0;
+            let maxEnd = Infinity;
+
+            trackSubs.forEach(s => {
+                if (s.end <= initialStart + 0.001) minStart = Math.max(minStart, s.end);
+                if (s.start >= initialSub.end - 0.001) maxEnd = Math.min(maxEnd, s.start);
+            });
+
+            if (newStart < minStart) {
+                newStart = minStart;
+                newEnd = newStart + duration;
+            }
+            if (newEnd > maxEnd) {
+                newEnd = maxEnd;
+                newStart = newEnd - duration;
+                if (newStart < minStart) newStart = minStart;
+            }
 
             const newSubs = [...state.subtitles];
             const movedSub = {
@@ -1079,62 +1304,117 @@ document.addEventListener('DOMContentLoaded', () => {
         function onMouseUp() {
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
+            document.removeEventListener('touchmove', onMouseMove);
+            document.removeEventListener('touchend', onMouseUp);
             recordHistory();
         }
 
         document.addEventListener('mousemove', onMouseMove);
         document.addEventListener('mouseup', onMouseUp);
+        document.addEventListener('touchmove', onMouseMove, { passive: false });
+        document.addEventListener('touchend', onMouseUp);
     }
 
     function handleResizeStart(e, index, direction) {
         e.stopPropagation();
-        const startX = e.clientX;
+        if (e.type === 'touchstart') e.preventDefault();
+        const startX = getClientX(e);
         const initialSub = state.subtitles[index];
         const { start, end } = initialSub;
 
         function onMouseMove(moveEvent) {
-            const deltaX = (moveEvent.clientX - startX) / (PIXELS_PER_SECOND * state.zoomLevel);
+            const currentX = getClientX(moveEvent);
+            const deltaX = (currentX - startX) / (PIXELS_PER_SECOND * state.zoomLevel);
             let newStart = start, newEnd = end;
 
             if (direction === 'left') {
                 newStart = Math.max(0, start + deltaX);
-                if (newStart >= end - 0.1) newStart = end - 0.1;
+                if (!moveEvent.altKey) {
+                    const snapPoints = getSnapPoints(initialSub.id);
+                    newStart = findSnap(newStart, snapPoints);
+                }
+                if (newStart >= end - 0.01) newStart = end - 0.01;
             } else {
-                newEnd = Math.max(start + 0.1, end + deltaX);
+                newEnd = Math.max(start + 0.01, end + deltaX);
+                if (!moveEvent.altKey) {
+                    const snapPoints = getSnapPoints(initialSub.id);
+                    newEnd = findSnap(newEnd, snapPoints);
+                }
+            }
+
+            // --- Lógica antiborreamento (Prevenir sobreposição) ---
+            const trackSubs = state.subtitles.filter(s => (s.track || 'Track 1') === (initialSub.track || 'Track 1') && s.id !== initialSub.id);
+            let minStart = 0;
+            let maxEnd = Infinity;
+
+            trackSubs.forEach(s => {
+                if (s.end <= start + 0.001) minStart = Math.max(minStart, s.end);
+                if (s.start >= end - 0.001) maxEnd = Math.min(maxEnd, s.start);
+            });
+
+            if (direction === 'left' && newStart < minStart) {
+                newStart = minStart;
+            } else if (direction === 'right' && newEnd > maxEnd) {
+                newEnd = maxEnd;
             }
 
             const newSubs = [...state.subtitles];
             const updatedSub = { ...initialSub, start: newStart, end: newEnd };
 
-            // Simplesmente corta as palavras que caem fora do novo intervalo,
-            // sem redistribuir ou reordenar nada.
-            const originalWords = initialSub.words || [];
-            const clampedWords = [];
-            for (const w of originalWords) {
-                // Palavra completamente fora do novo intervalo: remove
-                if (w.end <= newStart || w.start >= newEnd) continue;
-                // Palavra parcialmente dentro: clamp nos limites
-                clampedWords.push({
-                    ...w,
-                    start: Math.max(w.start, newStart),
-                    end: Math.min(w.end, newEnd)
-                });
-            }
-            updatedSub.words = clampedWords;
-            updatedSub.text = clampedWords.map(w => w.word).join(' ');
+            const oldDuration = end - start;
+            const newDuration = newEnd - newStart;
 
-            // Faz o mesmo para chars, se existirem
-            if (initialSub.chars && initialSub.chars.length > 0) {
-                const clampedChars = [];
-                for (const c of initialSub.chars) {
-                    if (c.end <= newStart || c.start >= newEnd) continue;
-                    clampedChars.push({
+            // Padrão (sem CTRL): reajusta tudo proporcionalmente. 
+            // Com CTRL: cresce/encolhe apenas a palavra da ponta sem mudar as outras.
+            const useProportional = !moveEvent.ctrlKey;
+
+            const originalWords = initialSub.words || [];
+
+            if (useProportional) {
+                const scale = newDuration / oldDuration;
+                updatedSub.words = originalWords.map(w => ({
+                    ...w,
+                    start: newStart + (w.start - start) * scale,
+                    end: newStart + (w.end - start) * scale
+                }));
+
+                // Faz o mesmo para chars, se existirem
+                if (initialSub.chars && initialSub.chars.length > 0) {
+                    updatedSub.chars = initialSub.chars.map(c => ({
                         ...c,
-                        start: Math.max(c.start, newStart),
-                        end: Math.min(c.end, newEnd)
-                    });
+                        start: newStart + (c.start - start) * scale,
+                        end: newStart + (c.end - start) * scale
+                    }));
                 }
-                updatedSub.chars = clampedChars;
+            } else {
+                // Aumentando (sem Shift): estica apenas a primeira ou última palavra/letra
+                updatedSub.words = JSON.parse(JSON.stringify(originalWords));
+                if (updatedSub.words.length > 0) {
+                    if (direction === 'left') {
+                        // Limite: a primeira palavra não pode ter duração negativa
+                        let maxAllowedStart = updatedSub.words[0].end - 0.001;
+                        if (newStart > maxAllowedStart) newStart = maxAllowedStart;
+                        updatedSub.start = newStart;
+                        updatedSub.words[0].start = newStart;
+                    } else {
+                        // Limite: a última palavra não pode ter duração negativa
+                        let minAllowedEnd = updatedSub.words[updatedSub.words.length - 1].start + 0.001;
+                        if (newEnd < minAllowedEnd) newEnd = minAllowedEnd;
+                        updatedSub.end = newEnd;
+                        updatedSub.words[updatedSub.words.length - 1].end = newEnd;
+                    }
+                }
+
+                if (initialSub.chars && initialSub.chars.length > 0) {
+                    updatedSub.chars = JSON.parse(JSON.stringify(initialSub.chars));
+                    if (updatedSub.chars.length > 0) {
+                        if (direction === 'left') {
+                            updatedSub.chars[0].start = newStart;
+                        } else {
+                            updatedSub.chars[updatedSub.chars.length - 1].end = newEnd;
+                        }
+                    }
+                }
             }
 
             newSubs[index] = updatedSub;
@@ -1144,11 +1424,15 @@ document.addEventListener('DOMContentLoaded', () => {
         function onMouseUp() {
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
+            document.removeEventListener('touchmove', onMouseMove);
+            document.removeEventListener('touchend', onMouseUp);
             recordHistory();
         }
 
         document.addEventListener('mousemove', onMouseMove);
         document.addEventListener('mouseup', onMouseUp);
+        document.addEventListener('touchmove', onMouseMove, { passive: false });
+        document.addEventListener('touchend', onMouseUp);
     }
 
     function handleSelectSubtitle(e, subtitle) {
@@ -1563,7 +1847,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     timelineFrame.addEventListener('contextmenu', handleContextMenu);
+
+    // Long press no fundo do timeline para mobile
+    let timelinePressTimer;
+    timelineFrame.addEventListener('touchstart', (e) => {
+        if (e.touches.length > 1) return; // ignora se for pinch
+        timelinePressTimer = setTimeout(() => {
+            handleContextMenu(e, null);
+        }, 500);
+    });
+    timelineFrame.addEventListener('touchend', () => { clearTimeout(timelinePressTimer); });
+    timelineFrame.addEventListener('touchmove', () => { clearTimeout(timelinePressTimer); });
+
     app.addEventListener('click', closeContextMenu);
+    app.addEventListener('touchstart', closeContextMenu, { passive: true });
 
     timelineScrollContainer.addEventListener('wheel', (e) => {
         e.preventDefault();
@@ -1600,6 +1897,53 @@ document.addEventListener('DOMContentLoaded', () => {
         renderCursor();
     }, { passive: false });
 
+    // Lógica de pinch-to-zoom mobile
+    let initialPinchDist = null;
+    let initialZoomStart = null;
+    timelineScrollContainer.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            initialPinchDist = Math.sqrt(dx * dx + dy * dy);
+            initialZoomStart = state.zoomLevel;
+        }
+    }, { passive: false });
+
+    timelineScrollContainer.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2 && initialPinchDist) {
+            e.preventDefault();
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const scale = dist / initialPinchDist;
+
+            const newZoom = Math.max(0.2, Math.min(100, initialZoomStart * scale));
+
+            if (newZoom !== state.zoomLevel) {
+                // Foca o zoom no centro dos dois dedos
+                const rect = timelineScrollContainer.getBoundingClientRect();
+                const centerXPx = ((e.touches[0].clientX + e.touches[1].clientX) / 2) - rect.left;
+                const timeAtCenter = (timelineScrollContainer.scrollLeft + centerXPx) / (PIXELS_PER_SECOND * state.zoomLevel);
+
+                updateState({ zoomLevel: newZoom });
+
+                const newCenterPx = timeAtCenter * PIXELS_PER_SECOND * state.zoomLevel;
+                timelineScrollContainer.scrollLeft = newCenterPx - centerXPx;
+
+                renderTimeline();
+                renderCursor();
+            }
+        }
+    }, { passive: false });
+
+    timelineScrollContainer.addEventListener('touchend', (e) => {
+        if (e.touches.length < 2) {
+            initialPinchDist = null;
+            initialZoomStart = null;
+        }
+    });
+
     // Atualiza a posição dos labels das tracks quando rola
     timelineScrollContainer.addEventListener('scroll', () => {
         const scrollLeft = timelineScrollContainer.scrollLeft;
@@ -1608,17 +1952,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    timelineFrame.addEventListener('mousedown', (e) => {
+    function handleTimelineCursorGrab(e) {
         // Se clicar em um bloco de legenda, handle OU no fundo de uma track, 
-        // não inicia o arraste do cursor (seek) se quisermos apenas trocar de track.
-        // Mas o trackBg.addEventListener já tem stopPropagation, então aqui só filtramos o resto.
-        if (e.target.closest('.subtitle-block') || e.target.closest('.resize-handle') || e.target.closest('.word-handle') || e.target.closest('.char-handle') || e.target.closest('.track-bg')) {
+        // ou se for touch de pinch (2 dedos), não inicia o arraste do cursor (seek).
+        if (e.target.closest('.subtitle-block') || e.target.closest('.resize-handle') || e.target.closest('.word-handle') || e.target.closest('.char-handle') || e.target.closest('.track-bg') || (e.touches && e.touches.length > 1)) {
             return;
         }
 
         const rect = timelineFrame.getBoundingClientRect();
         const updateCursorFromEvent = (event) => {
-            const x = event.clientX - rect.left;
+            const x = getClientX(event) - rect.left;
             const pos = Math.max(0, x / (PIXELS_PER_SECOND * state.zoomLevel));
             setCursorPosition(pos);
         };
@@ -1634,25 +1977,33 @@ document.addEventListener('DOMContentLoaded', () => {
             updateState({ isDraggingCursor: false });
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
+            document.removeEventListener('touchmove', onMouseMove);
+            document.removeEventListener('touchend', onMouseUp);
         };
 
         document.addEventListener('mousemove', onMouseMove);
         document.addEventListener('mouseup', onMouseUp);
+        document.addEventListener('touchmove', onMouseMove, { passive: false });
+        document.addEventListener('touchend', onMouseUp);
 
         if (!e.ctrlKey && !e.shiftKey) {
             updateState({ selectedSubtitles: [] });
             renderTimeline();
             renderPreviewArea();
         }
-    });
+    }
 
-    cursor.addEventListener('mousedown', (e) => {
+    timelineFrame.addEventListener('mousedown', handleTimelineCursorGrab);
+    timelineFrame.addEventListener('touchstart', handleTimelineCursorGrab, { passive: true });
+
+    function handleCursorInteraction(e) {
         e.stopPropagation();
+        if (e.type === 'touchstart') e.preventDefault();
         const rect = timelineFrame.getBoundingClientRect();
         updateState({ isDraggingCursor: true });
 
         const onMouseMove = (moveEvent) => {
-            const x = moveEvent.clientX - rect.left;
+            const x = getClientX(moveEvent) - rect.left;
             const pos = Math.max(0, x / (PIXELS_PER_SECOND * state.zoomLevel));
             setCursorPosition(pos);
         };
@@ -1661,11 +2012,18 @@ document.addEventListener('DOMContentLoaded', () => {
             updateState({ isDraggingCursor: false });
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
+            document.removeEventListener('touchmove', onMouseMove);
+            document.removeEventListener('touchend', onMouseUp);
         };
 
         document.addEventListener('mousemove', onMouseMove);
         document.addEventListener('mouseup', onMouseUp);
-    });
+        document.addEventListener('touchmove', onMouseMove, { passive: false });
+        document.addEventListener('touchend', onMouseUp);
+    }
+
+    cursor.addEventListener('mousedown', handleCursorInteraction);
+    cursor.addEventListener('touchstart', handleCursorInteraction, { passive: false });
 
     // --- Inicialização ---
     initI18n(); // Carrega traduções primeiro
@@ -1798,12 +2156,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function initResizers() {
         // Resizer Horizontal (Ajusta Colunas do Grid)
-        resizerH.addEventListener('mousedown', (e) => {
+        function handleResizerHStart(e) {
             e.preventDefault();
             resizerH.classList.add('active');
+
             const onMouseMove = (moveEvent) => {
                 const workspaceRect = workspace.getBoundingClientRect();
-                const x = moveEvent.clientX - workspaceRect.left;
+                const x = getClientX(moveEvent) - workspaceRect.left;
                 const percentage = (x / workspaceRect.width) * 100;
 
                 if (percentage > 10 && percentage < 90) {
@@ -1811,37 +2170,56 @@ document.addEventListener('DOMContentLoaded', () => {
                     resizerH.style.left = `${percentage}%`;
                 }
             };
+
             const onMouseUp = () => {
                 resizerH.classList.remove('active');
                 document.removeEventListener('mousemove', onMouseMove);
                 document.removeEventListener('mouseup', onMouseUp);
+                document.removeEventListener('touchmove', onMouseMove);
+                document.removeEventListener('touchend', onMouseUp);
             };
+
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
-        });
+            document.addEventListener('touchmove', onMouseMove, { passive: false });
+            document.addEventListener('touchend', onMouseUp);
+        }
+
+        resizerH.addEventListener('mousedown', handleResizerHStart);
+        resizerH.addEventListener('touchstart', handleResizerHStart, { passive: false });
 
         // Resizer Vertical (Ajusta Linhas do Grid)
-        resizerV.addEventListener('mousedown', (e) => {
+        function handleResizerVStart(e) {
             e.preventDefault();
             resizerV.classList.add('active');
+
             const onMouseMove = (moveEvent) => {
                 const workspaceRect = workspace.getBoundingClientRect();
-                const y = moveEvent.clientY - workspaceRect.top;
+                const y = getClientY(moveEvent) - workspaceRect.top;
                 const percentage = (y / workspaceRect.height) * 100;
 
-                if (percentage > 10 && percentage < 90) {
+                if (percentage > 20 && percentage < 80) {
                     workspace.style.gridTemplateRows = `${percentage}% 1fr`;
                     resizerV.style.top = `${percentage}%`;
                 }
             };
+
             const onMouseUp = () => {
                 resizerV.classList.remove('active');
                 document.removeEventListener('mousemove', onMouseMove);
                 document.removeEventListener('mouseup', onMouseUp);
+                document.removeEventListener('touchmove', onMouseMove);
+                document.removeEventListener('touchend', onMouseUp);
             };
+
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
-        });
+            document.addEventListener('touchmove', onMouseMove, { passive: false });
+            document.addEventListener('touchend', onMouseUp);
+        }
+
+        resizerV.addEventListener('mousedown', handleResizerVStart);
+        resizerV.addEventListener('touchstart', handleResizerVStart, { passive: false });
 
         // Toggle Modo 9:16
         toggleLayoutBtn.addEventListener('click', () => {
