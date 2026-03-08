@@ -1,7 +1,7 @@
 // static/script.js
 const PIXELS_PER_SECOND = 100;
 const WORD_ZOOM_THRESHOLD = 2.5; // Nível de zoom para mostrar palavras
-const CHAR_ZOOM_THRESHOLD = 20; // Nível de zoom BEM ALTO para mostrar caracteres
+const CHAR_ZOOM_THRESHOLD = 50; // Nível de zoom BEM ALTO para mostrar caracteres
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- Referências ao DOM ---
@@ -426,7 +426,50 @@ document.addEventListener('DOMContentLoaded', () => {
             const dragArea = document.createElement('div');
             dragArea.className = 'drag-area';
             dragArea.addEventListener('mousedown', (e) => handleMoveStart(e, index));
-            dragArea.addEventListener('touchstart', (e) => handleMoveStart(e, index), { passive: false });
+            // Mobile: segurar para arrastar (estilo CapCut)
+            let holdTimer = null;
+            let holdActivated = false;
+            dragArea.addEventListener('touchstart', (te) => {
+                holdActivated = false;
+                const startTouch = { x: te.touches[0].clientX, y: te.touches[0].clientY };
+                // Espera 200ms de hold sem mover para ativar arraste
+                holdTimer = setTimeout(() => {
+                    holdActivated = true;
+                    // Feedback visual: borda brilhante
+                    block.style.outline = '2px solid #7289da';
+                    block.style.transform = 'scale(1.02)';
+                    block.style.zIndex = '100';
+                    // Vibração tátil se disponível
+                    if (navigator.vibrate) navigator.vibrate(30);
+                    handleMoveStart(te, index);
+                }, 200);
+
+                const cancelHold = (me) => {
+                    if (!holdActivated) {
+                        const dx = me.touches[0].clientX - startTouch.x;
+                        const dy = me.touches[0].clientY - startTouch.y;
+                        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+                            clearTimeout(holdTimer);
+                            holdTimer = null;
+                            document.removeEventListener('touchmove', cancelHold);
+                        }
+                    }
+                };
+                document.addEventListener('touchmove', cancelHold, { passive: true });
+
+                const cleanupHold = () => {
+                    clearTimeout(holdTimer);
+                    holdTimer = null;
+                    block.style.outline = '';
+                    block.style.transform = '';
+                    block.style.zIndex = '';
+                    document.removeEventListener('touchmove', cancelHold);
+                    document.removeEventListener('touchend', cleanupHold);
+                    document.removeEventListener('touchcancel', cleanupHold);
+                };
+                document.addEventListener('touchend', cleanupHold, { once: true });
+                document.addEventListener('touchcancel', cleanupHold, { once: true });
+            }, { passive: true });
 
             // --- LÓGICA DE VISUALIZAÇÃO DE 3 NÍVEIS ---
             const showCharLevel = state.zoomLevel >= CHAR_ZOOM_THRESHOLD;
@@ -547,15 +590,36 @@ document.addEventListener('DOMContentLoaded', () => {
             block.addEventListener('click', (e) => handleSelectSubtitle(e, sub));
             block.addEventListener('contextmenu', (e) => handleContextMenu(e, sub));
 
-            // Long press para abrir context menu no mobile
+            // Touch handlers para mobile: tap para selecionar, long press para context menu
             let pressTimer;
+            let touchStartTime = 0;
+            let touchStartPos = { x: 0, y: 0 };
+            let touchMoved = false;
             block.addEventListener('touchstart', (e) => {
+                touchStartTime = Date.now();
+                touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                touchMoved = false;
                 pressTimer = setTimeout(() => {
                     handleContextMenu(e, sub);
-                }, 500); // 500ms long press
+                }, 500);
+            }, { passive: true });
+            block.addEventListener('touchmove', (e) => {
+                const dx = e.touches[0].clientX - touchStartPos.x;
+                const dy = e.touches[0].clientY - touchStartPos.y;
+                if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+                    touchMoved = true;
+                    clearTimeout(pressTimer);
+                }
+            }, { passive: true });
+            block.addEventListener('touchend', (e) => {
+                clearTimeout(pressTimer);
+                const elapsed = Date.now() - touchStartTime;
+                // Tap rápido sem mover = selecionar
+                if (!touchMoved && elapsed < 300) {
+                    e.preventDefault();
+                    handleSelectSubtitle(e, sub);
+                }
             });
-            block.addEventListener('touchend', () => { clearTimeout(pressTimer); });
-            block.addEventListener('touchmove', () => { clearTimeout(pressTimer); });
 
             timelineContent.appendChild(block);
         });
