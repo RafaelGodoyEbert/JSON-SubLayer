@@ -8,7 +8,13 @@
 
 ### 🚀 [TESTAR ONLINE AGORA](https://rafaelgodoyebert.github.io/JSON-SubLayer/)
 
-<img width="2500" height="895" alt="image" src="https://github.com/user-attachments/assets/2c41624f-cd53-4c33-8222-de45312e221b" />
+### Desktop
+
+<img width="3651" height="1890" alt="JSON SubLayer em um computador" src="https://github.com/user-attachments/assets/eb72473a-8bfd-4e1f-9e44-1d67c7661bfb" />
+
+### Mobile
+
+<img width="660" height="1580" alt="JSON SubLayer em um celular" src="https://github.com/user-attachments/assets/5590a422-07b9-4bae-9a0b-909e5b6daba9" />
 
 ## 💡 Por que este projeto existe?
 
@@ -35,6 +41,12 @@ No fluxo do ViralCutter, o arquivo `.ass` (Advanced Substation Alpha) é apenas 
 ## ✨ Principais Diferenciais
 
 *   **🌐 100% Web & Offline:** Roda no navegador (GitHub Pages). Seguro e privado.
+*   **📱 Desktop e Mobile:** Interface responsiva com controles adaptados para telas pequenas.
+*   **👆 Edição por Toque:** Mova e redimensione os blocos diretamente com o dedo.
+*   **🔢 Lista Numerada:** Visualize e edite todas as legendas com timestamps de início e fim.
+*   **🔎 Pesquisa Rápida:** Filtre legendas instantaneamente por número, tempo ou texto.
+*   **🌓 Temas Claro e Escuro:** O editor lembra o tema escolhido no navegador.
+*   **⏪ Controle J/L:** Reproduza para trás ou para frente em 1x, 2x, 4x e 8x.
 *   **🧱 Multi-Track:** Edite múltiplas camadas simultaneamente.
 *   **🔍 Power Tools:** Busca e Substituição (Ctrl+F/H) com destaque visual.
 *   **🔊 Waveform:** Sincronia perfeita com visualização de áudio.
@@ -50,7 +62,7 @@ Este projeto é hospedado no GitHub Pages e roda inteiramente no lado do cliente
 1. **Acesse o link do projeto** (ou abra o arquivo `index.html` localmente).
 2. Carregue seu arquivo de mídia (Vídeo/Áudio) para referência.
 3. Importe seu arquivo de legenda (`.json`).
-4. Edite usando a timeline visual.
+4. Edite pela lista numerada ou pela timeline visual. No celular, arraste os blocos diretamente com o dedo.
 5. Exporte no formato desejado.
 
 ## ⌨️ Atalhos de Teclado
@@ -58,6 +70,8 @@ Este projeto é hospedado no GitHub Pages e roda inteiramente no lado do cliente
 | Atalho | Ação |
 | :--- | :--- |
 | `Espaço` | Play / Pause |
+| `J` | Reproduzir para trás; pressione novamente para acelerar |
+| `L` | Reproduzir para frente; pressione novamente para acelerar |
 | `K` | Dividir legenda (Split) |
 | `G` | Mesclar legendas (Merge) |
 | `Delete` | Excluir seleção |
@@ -65,8 +79,7 @@ Este projeto é hospedado no GitHub Pages e roda inteiramente no lado do cliente
 | `Ctrl + Z / Y` | Desfazer / Refazer |
 | `Ctrl + F` | Buscar |
 | `Ctrl + H` | Substituir |
-| `Alt + Scroll` | Zoom na Timeline |
+| `Ctrl + Scroll` | Zoom na Timeline |
 
 ---
 **JSON SubLayer for WhisperX** - A peça chave para legendas perfeitas no [ViralCutter](https://github.com/rafaelgodoyebert/ViralCutter). 🎯🎞️
-
