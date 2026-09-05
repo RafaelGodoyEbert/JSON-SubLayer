@@ -11,6 +11,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const addSubtitleBtn = document.getElementById('add-subtitle');
     const saveJsonBtn = document.getElementById('save-json');
     const playPauseBtn = document.getElementById('play-pause');
+    const shuttleReverseBtn = document.getElementById('shuttle-reverse');
+    const shuttleForwardBtn = document.getElementById('shuttle-forward');
+    const playbackSpeed = document.getElementById('playback-speed');
+    const themeToggleBtn = document.getElementById('theme-toggle');
     const timelineFrame = document.getElementById('timeline-frame');
     const timelineContent = document.getElementById('timeline-content');
     const timelineRuler = document.getElementById('timeline-ruler');
@@ -86,6 +90,8 @@ document.addEventListener('DOMContentLoaded', () => {
         zoomLevel: 1,
         cursorPosition: 0,
         isPlaying: false,
+        playbackDirection: 1,
+        playbackRate: 1,
         mediaUrl: null,
         mediaDuration: 0,
         lastSelected: null,
@@ -97,7 +103,8 @@ document.addEventListener('DOMContentLoaded', () => {
         tracks: ['Track 1'],
         activeTrack: 'Track 1',
         hiddenTracks: [], // Trilhas ocultas no preview
-        language: 'pt-br'
+        language: 'pt-br',
+        subtitleSearch: ''
     };
 
     // --- Internacionalização (i18n) ---
@@ -425,51 +432,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Área de arrastar que conterá a visualização apropriada
             const dragArea = document.createElement('div');
             dragArea.className = 'drag-area';
-            dragArea.addEventListener('mousedown', (e) => handleMoveStart(e, index));
-            // Mobile: segurar para arrastar (estilo CapCut)
-            let holdTimer = null;
-            let holdActivated = false;
-            dragArea.addEventListener('touchstart', (te) => {
-                holdActivated = false;
-                const startTouch = { x: te.touches[0].clientX, y: te.touches[0].clientY };
-                // Espera 200ms de hold sem mover para ativar arraste
-                holdTimer = setTimeout(() => {
-                    holdActivated = true;
-                    // Feedback visual: borda brilhante
-                    block.style.outline = '2px solid #7289da';
-                    block.style.transform = 'scale(1.02)';
-                    block.style.zIndex = '100';
-                    // Vibração tátil se disponível
-                    if (navigator.vibrate) navigator.vibrate(30);
-                    handleMoveStart(te, index);
-                }, 200);
-
-                const cancelHold = (me) => {
-                    if (!holdActivated) {
-                        const dx = me.touches[0].clientX - startTouch.x;
-                        const dy = me.touches[0].clientY - startTouch.y;
-                        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
-                            clearTimeout(holdTimer);
-                            holdTimer = null;
-                            document.removeEventListener('touchmove', cancelHold);
-                        }
-                    }
-                };
-                document.addEventListener('touchmove', cancelHold, { passive: true });
-
-                const cleanupHold = () => {
-                    clearTimeout(holdTimer);
-                    holdTimer = null;
-                    block.style.outline = '';
-                    block.style.transform = '';
-                    block.style.zIndex = '';
-                    document.removeEventListener('touchmove', cancelHold);
-                    document.removeEventListener('touchend', cleanupHold);
-                    document.removeEventListener('touchcancel', cleanupHold);
-                };
-                document.addEventListener('touchend', cleanupHold, { once: true });
-                document.addEventListener('touchcancel', cleanupHold, { once: true });
-            }, { passive: true });
+            dragArea.addEventListener('pointerdown', (e) => handleMoveStart(e, index));
 
             // --- LÓGICA DE VISUALIZAÇÃO DE 3 NÍVEIS ---
             const showCharLevel = state.zoomLevel >= CHAR_ZOOM_THRESHOLD;
@@ -679,28 +642,67 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderPreviewArea() {
-        if (state.selectedSubtitles.length !== 1) {
-            previewArea.innerHTML = t('no_selection');
+        previewArea.innerHTML = '';
+        if (!state.subtitles.length) {
+            previewArea.textContent = t('no_selection');
             return;
         }
 
-        // Tenta pegar sempre a versão mais atualizada da legenda pelo ID
-        const selectedId = state.selectedSubtitles[0].id;
-        const subtitle = state.subtitles.find(s => s.id === selectedId) || state.selectedSubtitles[0];
+        const searchBar = document.createElement('label');
+        searchBar.className = 'subtitle-search';
+        searchBar.innerHTML = '<span aria-hidden="true">🔍</span>';
+        const searchInput = document.createElement('input');
+        searchInput.type = 'search';
+        searchInput.placeholder = 'Pesquisar legendas';
+        searchInput.setAttribute('aria-label', 'Pesquisar legendas');
+        searchInput.value = state.subtitleSearch;
+        searchBar.appendChild(searchInput);
+        previewArea.appendChild(searchBar);
 
-        if (!previewArea.querySelector('textarea')) {
-            previewArea.innerHTML = '';
+        const selectedIds = new Set(state.selectedSubtitles.map(subtitle => subtitle.id));
+        state.subtitles.forEach((subtitle, index) => {
+            const row = document.createElement('div');
+            row.className = `subtitle-list-row${selectedIds.has(subtitle.id) ? ' selected' : ''}`;
+            row.dataset.search = `${index + 1} ${formatClock(subtitle.start)} ${formatClock(subtitle.end)} ${subtitle.text || ''}`.toLocaleLowerCase();
+            row.hidden = !!state.subtitleSearch && !row.dataset.search.includes(state.subtitleSearch.toLocaleLowerCase());
+
+            const number = document.createElement('span');
+            number.className = 'subtitle-number';
+            number.textContent = `${index + 1}.`;
+
+            const times = document.createElement('span');
+            times.className = 'subtitle-times';
+            times.textContent = `${formatClock(subtitle.start)}\n${formatClock(subtitle.end)}`;
+
             const textarea = document.createElement('textarea');
-            textarea.rows = 4;
-            textarea.style.width = '100%';
+            textarea.rows = Math.max(2, Math.ceil(String(subtitle.text || '').length / 58));
+            textarea.value = subtitle.text || '';
+            textarea.setAttribute('aria-label', `Legenda ${index + 1}`);
+            const selectSubtitle = () => {
+                const current = state.subtitles.find(item => item.id === subtitle.id) || subtitle;
+                updateState({ selectedSubtitles: [current], lastSelected: current });
+                previewArea.querySelectorAll('.subtitle-list-row').forEach(item => item.classList.remove('selected'));
+                row.classList.add('selected');
+                renderTimeline();
+            };
+            textarea.addEventListener('focus', selectSubtitle);
             textarea.addEventListener('input', handleTextChange);
-            previewArea.appendChild(textarea);
-        }
-
-        const textarea = previewArea.querySelector('textarea');
-        if (textarea && textarea !== document.activeElement && textarea.value !== subtitle.text) {
-            textarea.value = subtitle.text;
-        }
+            row.addEventListener('click', event => {
+                if (event.target === textarea) return;
+                selectSubtitle();
+                textarea.focus();
+            });
+            row.addEventListener('contextmenu', event => handleContextMenu(event, subtitle));
+            row.append(number, times, textarea);
+            previewArea.appendChild(row);
+        });
+        searchInput.addEventListener('input', event => {
+            state.subtitleSearch = event.target.value;
+            const query = state.subtitleSearch.trim().toLocaleLowerCase();
+            previewArea.querySelectorAll('.subtitle-list-row').forEach(row => {
+                row.hidden = !!query && !row.dataset.search.includes(query);
+            });
+        });
     }
 
     // --- Lógica de Waveform ---
@@ -956,6 +958,14 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')},${ms.toString().padStart(3, '0')}`;
     }
 
+    function formatClock(seconds) {
+        const value = Math.max(0, Number(seconds) || 0);
+        const hours = Math.floor(value / 3600);
+        const minutes = Math.floor((value % 3600) / 60);
+        const secs = (value % 60).toFixed(3).padStart(6, '0');
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${secs}`;
+    }
+
     function convertToSRT(segments) {
         return segments.map((s, i) => {
             return `${i + 1}\n${formatTimeSRT(s.start)} --> ${formatTimeSRT(s.end)}\n${s.text}\n`;
@@ -1047,6 +1057,24 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     playPauseBtn.addEventListener('click', handlePlayPause);
+    shuttleReverseBtn?.addEventListener('click', () => startShuttle(-1));
+    shuttleForwardBtn?.addEventListener('click', () => startShuttle(1));
+
+    function updateThemeButton() {
+        if (!themeToggleBtn) return;
+        const isDark = document.documentElement.dataset.theme === 'dark';
+        themeToggleBtn.textContent = isDark ? '☀' : '☾';
+        themeToggleBtn.title = isDark ? 'Usar tema claro' : 'Usar tema escuro';
+    }
+
+    themeToggleBtn?.addEventListener('click', () => {
+        const nextTheme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = nextTheme;
+        localStorage.setItem('theme', nextTheme);
+        updateThemeButton();
+    });
+    window.addEventListener('storage', updateThemeButton);
+    updateThemeButton();
 
     // Listeners de Camadas (Tracks)
     trackSelector.addEventListener('change', (e) => {
@@ -1303,20 +1331,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function handleMoveStart(e, index) {
+        if (e.button !== 0) return;
+        e.preventDefault();
         e.stopPropagation();
-        if (e.type === 'touchstart') e.preventDefault();
-        const startX = getClientX(e);
+        const startX = e.clientX;
         const initialSub = state.subtitles[index];
         const initialStart = initialSub.start;
+        const duration = initialSub.end - initialSub.start;
+        const dragArea = e.currentTarget;
+        const block = dragArea.closest('.subtitle-block');
+        let finalStart = initialStart;
+        dragArea.setPointerCapture?.(e.pointerId);
 
-        function onMouseMove(moveEvent) {
-            const currentX = getClientX(moveEvent);
-            const deltaX = (currentX - startX) / (PIXELS_PER_SECOND * state.zoomLevel);
+        function resolveStart(clientX, altKey) {
+            const deltaX = (clientX - startX) / (PIXELS_PER_SECOND * state.zoomLevel);
             let newStart = Math.max(0, initialStart + deltaX);
-            const duration = initialSub.end - initialSub.start;
             let newEnd = newStart + duration;
 
-            if (!moveEvent.altKey) {
+            if (!altKey) {
                 const snapPoints = getSnapPoints(initialSub.id);
                 const snappedStart = findSnap(newStart, snapPoints);
                 const snappedEnd = findSnap(newEnd, snapPoints);
@@ -1349,34 +1381,40 @@ document.addEventListener('DOMContentLoaded', () => {
                 newStart = newEnd - duration;
                 if (newStart < minStart) newStart = minStart;
             }
+            return Math.max(0, newStart);
+        }
 
+        function onPointerMove(moveEvent) {
+            if (moveEvent.pointerId !== e.pointerId) return;
+            moveEvent.preventDefault();
+            finalStart = resolveStart(moveEvent.clientX, moveEvent.altKey);
+            block.style.left = `${finalStart * PIXELS_PER_SECOND * state.zoomLevel}px`;
+        }
+
+        function onPointerUp(upEvent) {
+            if (upEvent.pointerId !== e.pointerId) return;
             const newSubs = [...state.subtitles];
             const movedSub = {
                 ...initialSub,
-                start: newStart,
-                end: newEnd,
+                start: finalStart,
+                end: finalStart + duration,
                 words: (initialSub.words || []).map(w => ({
                     ...w,
-                    start: w.start + (newStart - initialSub.start),
-                    end: w.end + (newStart - initialSub.start)
+                    start: w.start + (finalStart - initialSub.start),
+                    end: w.end + (finalStart - initialSub.start)
                 }))
             };
             newSubs[index] = movedSub;
             updateSubtitles(newSubs, false);
-        }
-
-        function onMouseUp() {
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
-            document.removeEventListener('touchmove', onMouseMove);
-            document.removeEventListener('touchend', onMouseUp);
             recordHistory();
+            dragArea.removeEventListener('pointermove', onPointerMove);
+            dragArea.removeEventListener('pointerup', onPointerUp);
+            dragArea.removeEventListener('pointercancel', onPointerUp);
         }
 
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
-        document.addEventListener('touchmove', onMouseMove, { passive: false });
-        document.addEventListener('touchend', onMouseUp);
+        dragArea.addEventListener('pointermove', onPointerMove);
+        dragArea.addEventListener('pointerup', onPointerUp);
+        dragArea.addEventListener('pointercancel', onPointerUp);
     }
 
     function handleResizeStart(e, index, direction) {
@@ -1627,33 +1665,61 @@ document.addEventListener('DOMContentLoaded', () => {
         renderCursor();
     }
 
-    function handlePlayPause() {
-        updateState({ isPlaying: !state.isPlaying });
+    function updateTransportControls() {
         playPauseBtn.textContent = state.isPlaying ? t('pause') : t('play');
-
-        if (state.isPlaying) {
-            if (mediaPlayer.src) mediaPlayer.play();
-            playbackLoop();
-        } else {
-            if (mediaPlayer.src) mediaPlayer.pause();
-        }
+        shuttleReverseBtn?.classList.toggle('transport-active', state.isPlaying && state.playbackDirection < 0);
+        shuttleForwardBtn?.classList.toggle('transport-active', state.isPlaying && state.playbackDirection > 0);
+        if (playbackSpeed) playbackSpeed.textContent = `${state.isPlaying && state.playbackDirection < 0 ? '-' : ''}${state.playbackRate}x`;
     }
 
-    let lastTime = Date.now();
+    function stopPlayback() {
+        updateState({ isPlaying: false, playbackRate: 1 });
+        mediaPlayer.pause();
+        updateTransportControls();
+    }
+
+    function startShuttle(direction) {
+        const alreadyRunning = state.isPlaying;
+        const rate = alreadyRunning && state.playbackDirection === direction
+            ? Math.min(8, state.playbackRate * 2)
+            : 1;
+        updateState({ isPlaying: true, playbackDirection: direction, playbackRate: rate });
+        mediaPlayer.playbackRate = rate;
+        lastTime = performance.now();
+        if (direction > 0 && mediaPlayer.src) mediaPlayer.play().catch(() => {});
+        else mediaPlayer.pause();
+        updateTransportControls();
+        if (!alreadyRunning) playbackLoop();
+    }
+
+    function handlePlayPause() {
+        if (state.isPlaying) stopPlayback();
+        else startShuttle(1);
+    }
+
+    let lastTime = performance.now();
     function playbackLoop() {
         if (!state.isPlaying) return;
 
-        if (mediaPlayer.src) {
+        const now = performance.now();
+        const delta = (now - lastTime) / 1000;
+        lastTime = now;
+        if (state.playbackDirection < 0) {
+            if (!state.isDraggingCursor) {
+                const nextPosition = Math.max(0, state.cursorPosition - delta * state.playbackRate);
+                if (mediaPlayer.src) mediaPlayer.currentTime = nextPosition;
+                setCursorPosition(nextPosition);
+                if (nextPosition === 0) {
+                    stopPlayback();
+                    return;
+                }
+            }
+        } else if (mediaPlayer.src) {
             if (!state.isDraggingCursor) {
                 setCursorPosition(mediaPlayer.currentTime);
             }
-        } else {
-            if (!state.isDraggingCursor) {
-                const now = Date.now();
-                const delta = (now - lastTime) / 1000;
-                setCursorPosition(state.cursorPosition + delta);
-                lastTime = now;
-            }
+        } else if (!state.isDraggingCursor) {
+            setCursorPosition(state.cursorPosition + delta * state.playbackRate);
         }
 
         // Auto-scroll da timeline
@@ -1668,14 +1734,9 @@ document.addEventListener('DOMContentLoaded', () => {
         requestAnimationFrame(playbackLoop);
     }
 
-    if (mediaPlayer.src) {
-        mediaPlayer.addEventListener('timeupdate', () => {
-            if (state.isPlaying) {
-                setCursorPosition(mediaPlayer.currentTime);
-            }
-        });
-        mediaPlayer.addEventListener('ended', () => handlePlayPause());
-    }
+    mediaPlayer.addEventListener('ended', () => {
+        if (state.isPlaying) stopPlayback();
+    });
 
     // --- Lógica de Teclado e Contexto ---
 
@@ -1686,6 +1747,8 @@ document.addEventListener('DOMContentLoaded', () => {
         let handled = true;
         switch (e.key) {
             case ' ': e.preventDefault(); handlePlayPause(); break;
+            case 'j': case 'J': startShuttle(-1); break;
+            case 'l': case 'L': startShuttle(1); break;
             case 'Delete': handleDelete(); break;
             case 'k': case 'K': await handleSplit(); break;
             case 'g': case 'G': handleMerge(); break;
@@ -2265,6 +2328,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (percentage > 20 && percentage < 80) {
                     workspace.style.gridTemplateRows = `${percentage}% 1fr`;
                     resizerV.style.top = `${percentage}%`;
+                    if (!workspace.classList.contains('layout-916')) resizerH.style.height = `${percentage}%`;
                 }
             };
 
@@ -2293,22 +2357,25 @@ document.addEventListener('DOMContentLoaded', () => {
             if (is916) {
                 // Modo 9:16: Reseta para proporção vertical padrão
                 workspace.style.gridTemplateColumns = "1fr 350px";
-                workspace.style.gridTemplateRows = "1fr 200px";
+                workspace.style.gridTemplateRows = "55% 1fr";
                 resizerH.style.left = "calc(100% - 350px)";
-                resizerV.style.top = "calc(100% - 200px)";
+                resizerH.style.height = "100%";
+                resizerV.style.top = "55%";
             } else {
                 // Modo Normal (16:9): Reseta para proporção wide
                 workspace.style.gridTemplateColumns = "1fr 1fr";
-                workspace.style.gridTemplateRows = "1fr 200px";
+                workspace.style.gridTemplateRows = "55% 1fr";
                 resizerH.style.left = "50%";
-                resizerV.style.top = "calc(100% - 200px)";
+                resizerH.style.height = "55%";
+                resizerV.style.top = "55%";
             }
             updateIndicators();
         });
 
         // Posicionamento inicial dos resizers
         resizerH.style.left = "50%";
-        resizerV.style.top = "calc(100% - 200px)";
+        resizerH.style.height = "55%";
+        resizerV.style.top = "55%";
     }
 
     // --- Lógica de Busca e Substituição ---
@@ -2370,7 +2437,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function highlightSearchTerm() {
-        const textarea = previewArea.querySelector('textarea');
+        const textarea = previewArea.querySelector('.subtitle-list-row.selected textarea');
         if (!textarea || state.selectedSubtitles.length !== 1) return;
 
         const findText = findInput?.value || replaceFindInput?.value;
@@ -2399,7 +2466,7 @@ document.addEventListener('DOMContentLoaded', () => {
             previewArea.querySelector('.search-highlight-container').remove();
         }
         highlightDiv.className = 'search-highlight-container';
-        previewArea.insertBefore(highlightDiv, textarea);
+        textarea.parentElement.insertBefore(highlightDiv, textarea);
     }
 
     function replaceInSubtitle(subtitle, findText, replaceText) {

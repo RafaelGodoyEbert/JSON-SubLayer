@@ -5,6 +5,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Editor de Legendas</title>
+    <script>
+        const applyEditorTheme = theme => document.documentElement.dataset.theme = theme;
+        const savedEditorTheme = localStorage.getItem('theme');
+        applyEditorTheme(savedEditorTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+        addEventListener('storage', event => {
+            if (event.key === 'theme' && event.newValue) applyEditorTheme(event.newValue);
+        });
+    </script>
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -24,7 +32,13 @@
             <input type="file" id="import-media" accept="video/*,audio/*" data-i18n-title="import_media">
             <button id="add-subtitle" data-i18n="add_subtitle">Adicionar Legenda</button>
             <button id="save-json" data-i18n="save">Salvar</button>
-            <button id="play-pause" data-i18n="play">Play</button>
+            <span class="transport-controls">
+                <button id="shuttle-reverse" type="button" title="J: reproduzir para trás; pressione novamente para acelerar">J ◀</button>
+                <button id="play-pause" data-i18n="play">Play</button>
+                <button id="shuttle-forward" type="button" title="L: reproduzir para frente; pressione novamente para acelerar">L ▶</button>
+                <span id="playback-speed">1x</span>
+            </span>
+            <button id="theme-toggle" type="button" title="Alternar tema claro/escuro" aria-label="Alternar tema">◐</button>
             <button id="toggle-layout" data-i18n="mode_916" title="Alternar Modo 9:16">Modo 9:16</button>
             <button id="split-by-punctuation" data-i18n="split_punctuation"
                 title="Dividir por Pontuação (., !, ?, ...)">✂️ Punctuation</button>
