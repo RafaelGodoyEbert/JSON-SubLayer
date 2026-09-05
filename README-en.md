@@ -8,7 +8,13 @@
 
 ### 🚀 [TRY IT ONLINE NOW](https://rafaelgodoyebert.github.io/JSON-SubLayer/)
 
-<img width="2500" height="895" alt="image" src="https://github.com/user-attachments/assets/2c41624f-cd53-4c33-8222-de45312e221b" />
+### Desktop
+
+<img width="3651" height="1890" alt="JSON SubLayer on a desktop computer" src="https://github.com/user-attachments/assets/eb72473a-8bfd-4e1f-9e44-1d67c7661bfb" />
+
+### Mobile
+
+<img width="660" height="1580" alt="JSON SubLayer on a mobile phone" src="https://github.com/user-attachments/assets/5590a422-07b9-4bae-9a0b-909e5b6daba9" />
 
 ## 💡 Why does this project exist?
 
@@ -36,6 +42,12 @@ In the ViralCutter workflow, the `.ass` file (Advanced Substation Alpha) is just
 ## ✨ Key Features
 
 *   **🌐 100% Web & Offline:** Runs directly in the browser (GitHub Pages). Secure and private.
+*   **📱 Desktop and Mobile:** Responsive interface with controls adapted to small screens.
+*   **👆 Touch Editing:** Move and resize subtitle blocks directly with your finger.
+*   **🔢 Numbered List:** View and edit every subtitle with its start and end timestamps.
+*   **🔎 Quick Search:** Instantly filter subtitles by number, time, or text.
+*   **🌓 Light and Dark Themes:** The editor remembers your selected theme in the browser.
+*   **⏪ J/L Shuttle Controls:** Play backward or forward at 1x, 2x, 4x, and 8x.
 *   **🧱 Multi-Track:** Edit multiple layers simultaneously.
 *   **🔍 Power Tools:** Search and Replace (Ctrl+F/H) with visual highlighting.
 *   **🔊 Waveform:** Perfect sync with audio visualization.
@@ -51,7 +63,7 @@ This project is hosted on GitHub Pages and runs entirely on the client-side.
 1.  **Access the project link** (or open `index.html` locally).
 2.  Load your media file (Video/Audio) for reference.
 3.  Import your subtitle file (`.json`).
-4.  Edit using the visual timeline.
+4.  Edit through the numbered list or the visual timeline. On mobile, drag blocks directly with your finger.
 5.  Export in the desired format.
 
 ## ⌨️ Keyboard Shortcuts
@@ -59,6 +71,8 @@ This project is hosted on GitHub Pages and runs entirely on the client-side.
 | Shortcut | Action |
 | :--- | :--- |
 | `Space` | Play / Pause |
+| `J` | Play backward; press again to increase speed |
+| `L` | Play forward; press again to increase speed |
 | `K` | Split subtitle |
 | `G` | Merge subtitles |
 | `Delete` | Delete selection |
@@ -66,8 +80,7 @@ This project is hosted on GitHub Pages and runs entirely on the client-side.
 | `Ctrl + Z / Y` | Undo / Redo |
 | `Ctrl + F` | Find |
 | `Ctrl + H` | Replace |
-| `Alt + Scroll` | Zoom Timeline |
+| `Ctrl + Scroll` | Zoom Timeline |
 
 ---
 **JSON SubLayer for WhisperX** - The key piece for perfect subtitles in [ViralCutter](https://github.com/rafaelgodoyebert/ViralCutter). 🎯🎞️
-
