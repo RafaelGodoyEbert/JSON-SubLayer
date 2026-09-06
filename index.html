@@ -29,15 +29,13 @@
                 style="background: #23272a; color: white; border: 1px solid #444; padding: 4px; border-radius: 4px; cursor: pointer;">
             </select>
             <input type="file" id="import-json" accept=".json" data-i18n-title="import_json">
-            <input type="file" id="import-media" accept="video/*,audio/*" data-i18n-title="import_media">
+            <label class="media-picker">
+                <span>Escolher vídeo</span>
+                <input type="file" id="import-media" accept="video/*,audio/*" data-i18n-title="import_media">
+            </label>
+            <span id="media-file-name">Nenhuma mídia selecionada</span>
             <button id="add-subtitle" data-i18n="add_subtitle">Adicionar Legenda</button>
             <button id="save-json" data-i18n="save">Salvar</button>
-            <span class="transport-controls">
-                <button id="shuttle-reverse" type="button" title="J: reproduzir para trás; pressione novamente para acelerar">J ◀</button>
-                <button id="play-pause" data-i18n="play">Play</button>
-                <button id="shuttle-forward" type="button" title="L: reproduzir para frente; pressione novamente para acelerar">L ▶</button>
-                <span id="playback-speed">1x</span>
-            </span>
             <button id="theme-toggle" type="button" title="Alternar tema claro/escuro" aria-label="Alternar tema">◐</button>
             <button id="toggle-layout" data-i18n="mode_916" title="Alternar Modo 9:16">Modo 9:16</button>
             <button id="split-by-punctuation" data-i18n="split_punctuation"
@@ -45,6 +43,21 @@
             <label style="color: white; margin-left: 20px;">
                 <input type="checkbox" id="auto-generate-chars" checked>
                 <span data-i18n="auto_chars">Gerar nível caractere automaticamente</span>
+            </label>
+            <label style="color: white; margin-left: 15px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none;"
+                title="Ao encurtar uma legenda, remova palavras e caracteres que ficaram fora dela.">
+                <input type="checkbox" id="delete-on-shorten">
+                <span>Apagar ao encurtar</span>
+            </label>
+            <label style="color: white; margin-left: 15px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none;"
+                title="Rola a lista lateral automaticamente durante a reprodução.">
+                <input type="checkbox" id="follow-playback" checked>
+                <span>📜 Seguir reprodução</span>
+            </label>
+            <label style="color: white; margin-left: 15px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none;"
+                title="Destaca a palavra ativa na lista e na prévia.">
+                <input type="checkbox" id="word-highlight" checked>
+                <span>✨ Palavra por palavra</span>
             </label>
             <div class="track-controls"
                 style="display: inline-flex; align-items: center; margin-left: 20px; color: white; gap: 10px;">
@@ -55,6 +68,12 @@
             </div>
             <span id="zoom-indicator" style="color: white; margin-left: 20px; font-weight: bold;"><span
                     data-i18n="zoom">Zoom</span>: 1.0x</span>
+            <div class="snap-controls" title="Alinha blocos próximos ao arrastar. Segure Ctrl ou Shift para ativar, se marcado.">
+                <label><input type="checkbox" id="snap-enabled" checked> 🧲 Ímã</label>
+                <label><input type="checkbox" id="snap-key-only" checked> Segurar Ctrl</label>
+                <input type="number" id="snap-gap-ms" value="50" min="0" max="2000" step="10" aria-label="Distância do ímã em milissegundos">
+                <span>ms</span>
+            </div>
         </div>
 
         <div class="workspace" id="workspace">
@@ -67,6 +86,16 @@
                     <div data-i18n="no_media">Nenhum vídeo ou áudio carregado</div>
                 </div>
                 <div id="subtitle-overlay" class="subtitle-overlay"></div>
+                <div id="video-transport-bar" class="video-transport-bar">
+                    <span id="video-current-timecode" class="video-timecode">00:00:00:00</span>
+                    <div class="video-transport-center">
+                        <button id="shuttle-reverse" type="button" title="J: reproduzir para trás; pressione novamente para acelerar">J ◀</button>
+                        <button id="play-pause" data-i18n="play">▶ Play</button>
+                        <button id="shuttle-forward" type="button" title="L: reproduzir para frente; pressione novamente para acelerar">L ▶</button>
+                        <span id="playback-speed">1x</span>
+                    </div>
+                    <span id="video-total-timecode" class="video-timecode">00:00:00:00</span>
+                </div>
             </div>
 
             <div id="timeline-scroll-container" class="timeline-container">
@@ -78,6 +107,7 @@
                             <div class="cursor-head"></div>
                         </div>
                     </div>
+                    <div id="snap-vertical-guide" class="snap-vertical-guide" style="display: none;"></div>
                 </div>
             </div>
 

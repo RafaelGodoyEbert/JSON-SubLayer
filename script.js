@@ -1,13 +1,24 @@
 // static/script.js
 const PIXELS_PER_SECOND = 100;
 const WORD_ZOOM_THRESHOLD = 2.5; // Nível de zoom para mostrar palavras
-const CHAR_ZOOM_THRESHOLD = 50; // Nível de zoom BEM ALTO para mostrar caracteres
+const CHAR_ZOOM_THRESHOLD = 20; // Nível de zoom BEM ALTO para mostrar caracteres
 
 document.addEventListener('DOMContentLoaded', () => {
+    // GitHub Pages pode bloquear localStorage em iframes; preferimos manter o editor funcional.
+    const safeStorage = {
+        getItem(key, fallback = null) {
+            try { return window.localStorage?.getItem(key) ?? fallback; } catch { return fallback; }
+        },
+        setItem(key, value) {
+            try { window.localStorage?.setItem(key, String(value)); } catch {}
+        }
+    };
+
     // --- Referências ao DOM ---
     const app = document.querySelector('.app');
     const importJsonBtn = document.getElementById('import-json');
     const importMediaBtn = document.getElementById('import-media');
+    const mediaFileName = document.getElementById('media-file-name');
     const addSubtitleBtn = document.getElementById('add-subtitle');
     const saveJsonBtn = document.getElementById('save-json');
     const playPauseBtn = document.getElementById('play-pause');
@@ -28,6 +39,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const waveformCanvas = document.getElementById('waveform-canvas');
     const waveformCtx = waveformCanvas.getContext('2d');
     const autoGenerateCharsCheckbox = document.getElementById('auto-generate-chars');
+    const deleteOnShortenCheckbox = document.getElementById('delete-on-shorten');
+    const followPlaybackCheckbox = document.getElementById('follow-playback');
+    const wordHighlightCheckbox = document.getElementById('word-highlight');
+    const snapEnabledCheckbox = document.getElementById('snap-enabled');
+    const snapKeyOnlyCheckbox = document.getElementById('snap-key-only');
+    const snapGapMsInput = document.getElementById('snap-gap-ms');
+    const snapVerticalGuide = document.getElementById('snap-vertical-guide');
+    const videoCurrentTimecode = document.getElementById('video-current-timecode');
+    const videoTotalTimecode = document.getElementById('video-total-timecode');
     const zoomIndicator = document.getElementById('zoom-indicator');
     const trackSelector = document.getElementById('track-selector');
     const addTrackBtn = document.getElementById('add-track');
@@ -100,6 +120,13 @@ document.addEventListener('DOMContentLoaded', () => {
         waveformData: null,
         audioDuration: 0,
         autoGenerateChars: true,
+        deleteOnShorten: safeStorage.getItem('subtitle_editor:delete_on_shorten') === 'true',
+        followPlayback: safeStorage.getItem('subtitle_editor:follow_playback') !== 'false',
+        wordHighlight: safeStorage.getItem('subtitle_editor:word_highlight') !== 'false',
+        snapEnabled: safeStorage.getItem('subtitle_editor:snap_enabled') !== 'false',
+        snapKeyOnly: safeStorage.getItem('subtitle_editor:snap_key_only') !== 'false',
+        snapGapMs: Number(safeStorage.getItem('subtitle_editor:snap_gap_ms', 50)) || 50,
+        lastActiveSubId: null,
         tracks: ['Track 1'],
         activeTrack: 'Track 1',
         hiddenTracks: [], // Trilhas ocultas no preview
@@ -331,7 +358,9 @@ document.addEventListener('DOMContentLoaded', () => {
         timelineContent.innerHTML = '';
         timelineContent.appendChild(cursor);
 
-        const totalDuration = Math.max(...state.subtitles.map(s => s.end), 10) + 60;
+        const totalDuration = Math.max(
+            ...state.subtitles.map(s => s.end), state.mediaDuration || 0, state.audioDuration || 0, 10
+        ) + 10;
         const totalTracks = state.tracks.length;
         const rowHeight = 60; // Altura de cada "camada"
 
@@ -406,10 +435,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Renderiza legendas
+        const selectedIds = new Set(state.selectedSubtitles.map(subtitle => subtitle.id));
         state.subtitles.forEach((sub, index) => {
             const block = document.createElement('div');
             block.className = 'subtitle-block';
-            if (state.selectedSubtitles.includes(sub)) {
+            if (selectedIds.has(sub.id)) {
                 block.classList.add('selected');
             }
 
@@ -608,37 +638,75 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function renderCursor() {
-        const cursorPx = state.cursorPosition * PIXELS_PER_SECOND * state.zoomLevel;
-        cursor.style.left = `${cursorPx}px`;
+    function escapeHtml(value) {
+        return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
 
-        // Sincroniza video/audio
+    function getSubtitleWords(subtitle) {
+        if (subtitle?.words?.length) return subtitle.words;
+        const tokens = String(subtitle?.text || '').trim().split(/\s+/).filter(Boolean);
+        const duration = Math.max(.1, subtitle.end - subtitle.start);
+        return tokens.map((word, index) => ({
+            word,
+            start: subtitle.start + index * duration / tokens.length,
+            end: subtitle.start + (index + 1) * duration / tokens.length
+        }));
+    }
+
+    function updateFollowAndWordHighlight() {
+        const activeSub = state.subtitles.find(subtitle => {
+            const track = subtitle.track || state.tracks[0];
+            return state.cursorPosition >= subtitle.start && state.cursorPosition <= subtitle.end && !state.hiddenTracks.includes(track);
+        });
+        const previousId = state.lastActiveSubId;
+        state.lastActiveSubId = activeSub?.id ?? null;
+        previewArea.querySelectorAll('.subtitle-list-row.active-playback').forEach(row => row.classList.remove('active-playback'));
+        if (!activeSub) return;
+
+        const row = previewArea.querySelector(`.subtitle-list-row[data-sub-id="${CSS.escape(String(activeSub.id))}"]`);
+        if (!row) return;
+        row.classList.add('active-playback');
+        if (state.followPlayback && previousId !== activeSub.id && document.activeElement?.tagName !== 'TEXTAREA') {
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        if (state.wordHighlight) row._renderWordSpans?.();
+    }
+
+    function formatTimecode(seconds, fps = 30) {
+        const safeSeconds = Math.max(0, Number(seconds) || 0);
+        const totalFrames = Math.round(safeSeconds * fps);
+        const frames = totalFrames % fps;
+        const totalSeconds = Math.floor(totalFrames / fps);
+        const secs = totalSeconds % 60;
+        const mins = Math.floor(totalSeconds / 60) % 60;
+        const hours = Math.floor(totalSeconds / 3600);
+        return [hours, mins, secs, frames].map(value => String(value).padStart(2, '0')).join(':');
+    }
+
+    function updateTimecodeDisplays() {
+        if (videoCurrentTimecode) videoCurrentTimecode.textContent = formatTimecode(state.cursorPosition);
+        if (videoTotalTimecode) videoTotalTimecode.textContent = formatTimecode(state.mediaDuration);
+    }
+
+    function renderCursor() {
+        cursor.style.left = `${state.cursorPosition * PIXELS_PER_SECOND * state.zoomLevel}px`;
         if (mediaPlayer.src) {
             const diff = Math.abs(mediaPlayer.currentTime - state.cursorPosition);
-            if (diff > 0.1 || (!state.isPlaying && diff > 0.01)) {
-                mediaPlayer.currentTime = state.cursorPosition;
-            }
+            if (diff > .1 || (!state.isPlaying && diff > .01)) mediaPlayer.currentTime = state.cursorPosition;
         }
 
-        // Atualiza overlay (Mostra legendas de TODAS as tracks juntas, exceto ocultas)
-        const activeSubs = state.subtitles.filter(s => {
-            const track = s.track || 'Track 1';
-            return state.cursorPosition >= s.start && state.cursorPosition <= s.end && !state.hiddenTracks.includes(track);
+        const activeSubs = state.subtitles.filter(subtitle => {
+            const track = subtitle.track || 'Track 1';
+            return state.cursorPosition >= subtitle.start && state.cursorPosition <= subtitle.end && !state.hiddenTracks.includes(track);
         });
-
-        if (activeSubs.length > 0) {
-            // Ordena por track para manter consistência visual
-            activeSubs.sort((a, b) => {
-                const idxA = state.tracks.indexOf(a.track || 'Track 1');
-                const idxB = state.tracks.indexOf(b.track || 'Track 1');
-                return idxA - idxB;
-            });
-
-            subtitleOverlay.innerHTML = activeSubs.map(s => s.text).join('<br>');
+        if (activeSubs.length) {
+            subtitleOverlay.innerHTML = activeSubs.map(subtitle => state.wordHighlight
+                ? getSubtitleWords(subtitle).map(word => `<span class="overlay-word ${state.cursorPosition >= word.start && state.cursorPosition <= word.end ? 'word-active' : state.cursorPosition > word.end ? 'word-spoken' : ''}">${escapeHtml(word.word)}</span>`).join(' ')
+                : escapeHtml(subtitle.text)).join('<br>');
             subtitleOverlay.style.display = 'block';
-        } else {
-            subtitleOverlay.style.display = 'none';
-        }
+        } else subtitleOverlay.style.display = 'none';
+        updateFollowAndWordHighlight();
+        updateTimecodeDisplays();
     }
 
     function renderPreviewArea() {
@@ -663,6 +731,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.subtitles.forEach((subtitle, index) => {
             const row = document.createElement('div');
             row.className = `subtitle-list-row${selectedIds.has(subtitle.id) ? ' selected' : ''}`;
+            row.dataset.subId = subtitle.id;
             row.dataset.search = `${index + 1} ${formatClock(subtitle.start)} ${formatClock(subtitle.end)} ${subtitle.text || ''}`.toLocaleLowerCase();
             row.hidden = !!state.subtitleSearch && !row.dataset.search.includes(state.subtitleSearch.toLocaleLowerCase());
 
@@ -673,11 +742,40 @@ document.addEventListener('DOMContentLoaded', () => {
             const times = document.createElement('span');
             times.className = 'subtitle-times';
             times.textContent = `${formatClock(subtitle.start)}\n${formatClock(subtitle.end)}`;
+            times.title = 'Clique para posicionar a agulha no início';
+            times.addEventListener('click', event => {
+                event.stopPropagation();
+                selectSubtitle();
+                setCursorPosition(subtitle.start);
+            });
 
+            const cell = document.createElement('div');
+            cell.className = 'subtitle-cell';
             const textarea = document.createElement('textarea');
             textarea.rows = Math.max(2, Math.ceil(String(subtitle.text || '').length / 58));
             textarea.value = subtitle.text || '';
             textarea.setAttribute('aria-label', `Legenda ${index + 1}`);
+            const wordsContainer = document.createElement('div');
+            wordsContainer.className = 'subtitle-words-container';
+            const renderWordSpans = () => {
+                const current = state.subtitles.find(item => item.id === subtitle.id) || subtitle;
+                wordsContainer.replaceChildren();
+                getSubtitleWords(current).forEach((word, wordIndex) => {
+                    if (wordIndex) wordsContainer.append(' ');
+                    const span = document.createElement('span');
+                    span.className = 'word-token';
+                    span.dataset.start = word.start;
+                    span.dataset.end = word.end;
+                    if (state.lastActiveSubId === current.id) {
+                        if (state.cursorPosition >= word.start && state.cursorPosition <= word.end) span.classList.add('word-active');
+                        else if (state.cursorPosition > word.end) span.classList.add('word-spoken');
+                    }
+                    span.textContent = word.word;
+                    wordsContainer.append(span);
+                });
+            };
+            row._renderWordSpans = renderWordSpans;
+            renderWordSpans();
             const selectSubtitle = () => {
                 const current = state.subtitles.find(item => item.id === subtitle.id) || subtitle;
                 updateState({ selectedSubtitles: [current], lastSelected: current });
@@ -686,14 +784,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderTimeline();
             };
             textarea.addEventListener('focus', selectSubtitle);
+            textarea.addEventListener('blur', () => {
+                if (state.wordHighlight) {
+                    renderWordSpans();
+                    textarea.hidden = true;
+                    wordsContainer.hidden = false;
+                }
+            });
             textarea.addEventListener('input', handleTextChange);
-            row.addEventListener('click', event => {
-                if (event.target === textarea) return;
+            wordsContainer.addEventListener('click', () => {
                 selectSubtitle();
+                textarea.hidden = false;
+                wordsContainer.hidden = true;
                 textarea.focus();
             });
+            if (state.wordHighlight) textarea.hidden = true;
+            else wordsContainer.hidden = true;
+            row.addEventListener('click', event => {
+                if (event.target === textarea || event.target === times || wordsContainer.contains(event.target)) return;
+                selectSubtitle();
+                if (!state.wordHighlight) textarea.focus();
+            });
             row.addEventListener('contextmenu', event => handleContextMenu(event, subtitle));
-            row.append(number, times, textarea);
+            cell.append(wordsContainer, textarea);
+            row.append(number, times, cell);
             previewArea.appendChild(row);
         });
         searchInput.addEventListener('input', event => {
@@ -865,6 +979,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const url = URL.createObjectURL(file);
         updateState({ mediaUrl: url });
+        if (mediaFileName) mediaFileName.textContent = file.name;
         mediaPlayer.src = url;
         mediaPlayer.style.display = 'block';
         videoPlaceholder.style.display = 'none';
@@ -875,6 +990,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             updateState({ mediaDuration: mediaPlayer.duration });
             renderTimeline();
+            updateTimecodeDisplays();
         });
 
         // Processa o áudio para gerar o waveform
@@ -1097,6 +1213,33 @@ document.addEventListener('DOMContentLoaded', () => {
         renderTimeline();
     });
 
+    const savedControls = [
+        [deleteOnShortenCheckbox, 'deleteOnShorten', 'subtitle_editor:delete_on_shorten'],
+        [followPlaybackCheckbox, 'followPlayback', 'subtitle_editor:follow_playback'],
+        [wordHighlightCheckbox, 'wordHighlight', 'subtitle_editor:word_highlight'],
+        [snapEnabledCheckbox, 'snapEnabled', 'subtitle_editor:snap_enabled'],
+        [snapKeyOnlyCheckbox, 'snapKeyOnly', 'subtitle_editor:snap_key_only']
+    ];
+    savedControls.forEach(([control, field, key]) => {
+        if (!control) return;
+        control.checked = state[field];
+        control.addEventListener('change', event => {
+            updateState({ [field]: event.target.checked });
+            safeStorage.setItem(key, event.target.checked);
+            if (field === 'wordHighlight') renderPreviewArea();
+            if (field === 'followPlayback' && event.target.checked) updateFollowAndWordHighlight();
+        });
+    });
+    if (snapGapMsInput) {
+        snapGapMsInput.value = state.snapGapMs;
+        snapGapMsInput.addEventListener('change', event => {
+            const value = Math.max(0, Math.min(2000, Number(event.target.value) || 50));
+            updateState({ snapGapMs: value });
+            safeStorage.setItem('subtitle_editor:snap_gap_ms', value);
+            event.target.value = value;
+        });
+    }
+
     // Listener para scroll da timeline (re-renderiza waveform)
     let scrollTimeout;
     timelineScrollContainer.addEventListener('scroll', () => {
@@ -1314,9 +1457,16 @@ document.addEventListener('DOMContentLoaded', () => {
         return points;
     }
 
+    function shouldSnap(event) {
+        return state.snapEnabled && !event.altKey && (!state.snapKeyOnly || event.ctrlKey || event.shiftKey);
+    }
+
+    function hideSnapGuide() {
+        if (snapVerticalGuide) snapVerticalGuide.style.display = 'none';
+    }
+
     function findSnap(time, snapPoints) {
-        // Find closest snap point within 15 pixels threshold
-        const thresholdTime = 15 / (PIXELS_PER_SECOND * state.zoomLevel);
+        const thresholdTime = state.snapGapMs / 1000;
         let closestDist = thresholdTime;
         let snapTime = time;
 
@@ -1327,6 +1477,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 snapTime = pt;
             }
         });
+        if (snapTime !== time && snapVerticalGuide) {
+            snapVerticalGuide.style.display = 'block';
+            snapVerticalGuide.style.left = `${snapTime * PIXELS_PER_SECOND * state.zoomLevel}px`;
+        } else hideSnapGuide();
         return snapTime;
     }
 
@@ -1343,12 +1497,12 @@ document.addEventListener('DOMContentLoaded', () => {
         let finalStart = initialStart;
         dragArea.setPointerCapture?.(e.pointerId);
 
-        function resolveStart(clientX, altKey) {
+        function resolveStart(clientX, event) {
             const deltaX = (clientX - startX) / (PIXELS_PER_SECOND * state.zoomLevel);
             let newStart = Math.max(0, initialStart + deltaX);
             let newEnd = newStart + duration;
 
-            if (!altKey) {
+            if (shouldSnap(event)) {
                 const snapPoints = getSnapPoints(initialSub.id);
                 const snappedStart = findSnap(newStart, snapPoints);
                 const snappedEnd = findSnap(newEnd, snapPoints);
@@ -1387,7 +1541,7 @@ document.addEventListener('DOMContentLoaded', () => {
         function onPointerMove(moveEvent) {
             if (moveEvent.pointerId !== e.pointerId) return;
             moveEvent.preventDefault();
-            finalStart = resolveStart(moveEvent.clientX, moveEvent.altKey);
+            finalStart = resolveStart(moveEvent.clientX, moveEvent);
             block.style.left = `${finalStart * PIXELS_PER_SECOND * state.zoomLevel}px`;
         }
 
@@ -1407,6 +1561,7 @@ document.addEventListener('DOMContentLoaded', () => {
             newSubs[index] = movedSub;
             updateSubtitles(newSubs, false);
             recordHistory();
+            hideSnapGuide();
             dragArea.removeEventListener('pointermove', onPointerMove);
             dragArea.removeEventListener('pointerup', onPointerUp);
             dragArea.removeEventListener('pointercancel', onPointerUp);
@@ -1431,14 +1586,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (direction === 'left') {
                 newStart = Math.max(0, start + deltaX);
-                if (!moveEvent.altKey) {
+                if (shouldSnap(moveEvent)) {
                     const snapPoints = getSnapPoints(initialSub.id);
                     newStart = findSnap(newStart, snapPoints);
                 }
                 if (newStart >= end - 0.01) newStart = end - 0.01;
             } else {
                 newEnd = Math.max(start + 0.01, end + deltaX);
-                if (!moveEvent.altKey) {
+                if (shouldSnap(moveEvent)) {
                     const snapPoints = getSnapPoints(initialSub.id);
                     newEnd = findSnap(newEnd, snapPoints);
                 }
@@ -1472,7 +1627,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const originalWords = initialSub.words || [];
 
-            if (useProportional) {
+            if (state.deleteOnShorten && newDuration < oldDuration) {
+                const keepWithinRange = item => item.end > newStart && item.start < newEnd;
+                updatedSub.words = originalWords.filter(keepWithinRange).map(word => ({
+                    ...word,
+                    start: Math.max(word.start, newStart),
+                    end: Math.min(word.end, newEnd)
+                }));
+                updatedSub.text = updatedSub.words.map(word => word.word).join(' ');
+                if (initialSub.chars?.length) {
+                    updatedSub.chars = initialSub.chars.filter(keepWithinRange).map(character => ({
+                        ...character,
+                        start: Math.max(character.start, newStart),
+                        end: Math.min(character.end, newEnd)
+                    }));
+                }
+            } else if (useProportional) {
                 const scale = newDuration / oldDuration;
                 updatedSub.words = originalWords.map(w => ({
                     ...w,
@@ -1529,6 +1699,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.removeEventListener('touchmove', onMouseMove);
             document.removeEventListener('touchend', onMouseUp);
             recordHistory();
+            hideSnapGuide();
         }
 
         document.addEventListener('mousemove', onMouseMove);
@@ -1560,7 +1731,6 @@ document.addEventListener('DOMContentLoaded', () => {
         renderPreviewArea();
     }
 
-    let adjustDebounceTimer = null;
     async function handleTextChange(e) {
         if (state.selectedSubtitles.length !== 1) return;
         const newText = e.target.value;
@@ -1609,46 +1779,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         renderTimeline();
 
-        // Debounce da API para não sobrecarregar e evitar conflitos de "save"
-        clearTimeout(adjustDebounceTimer);
-        adjustDebounceTimer = setTimeout(async () => {
-            if (state.lastAdjustRequest) state.lastAdjustRequest.abort();
-            const controller = new AbortController();
-            updateState({ lastAdjustRequest: controller });
-
-            try {
-                const response = await fetch('/api/adjust-words', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    signal: controller.signal,
-                    body: JSON.stringify({
-                        newText: newText,
-                        newStart: updatedSub.start,
-                        newEnd: updatedSub.end,
-                        oldWords: updatedSub.words
-                    })
-                });
-
-                if (response.ok) {
-                    const finalWords = await response.json();
-                    // Atualiza DEFINITIVO no estado
-                    const currentSubs = [...state.subtitles];
-                    const currentIdx = currentSubs.findIndex(s => s.id === updatedSub.id);
-                    if (currentIdx !== -1) {
-                        currentSubs[currentIdx] = { ...currentSubs[currentIdx], words: finalWords };
-                        // Se ainda estivermos com essa legenda selecionada, atualiza a seleção também
-                        const newSelection = state.selectedSubtitles[0]?.id === updatedSub.id
-                            ? [currentSubs[currentIdx]]
-                            : state.selectedSubtitles;
-
-                        updateState({ subtitles: currentSubs, selectedSubtitles: newSelection });
-                        renderTimeline();
-                    }
-                }
-            } catch (err) {
-                if (err.name !== 'AbortError') console.error("Erro API:", err);
-            }
-        }, 300); // 300ms de debounce
+        // A versão estática mantém o ajuste local; não depende do endpoint do Dublador.
+        previewArea.querySelector(`.subtitle-list-row[data-sub-id="${CSS.escape(String(selectedId))}"]`)?._renderWordSpans?.();
     }
 
     // Adiciona evento para gravar histórico quando terminar de editar
@@ -2089,7 +2221,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const rect = timelineFrame.getBoundingClientRect();
         const updateCursorFromEvent = (event) => {
             const x = getClientX(event) - rect.left;
-            const pos = Math.max(0, x / (PIXELS_PER_SECOND * state.zoomLevel));
+            let pos = Math.max(0, x / (PIXELS_PER_SECOND * state.zoomLevel));
+            if (shouldSnap(event)) pos = findSnap(pos, getSnapPoints());
+            else hideSnapGuide();
             setCursorPosition(pos);
         };
 
@@ -2101,6 +2235,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         const onMouseUp = () => {
+            hideSnapGuide();
             updateState({ isDraggingCursor: false });
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
@@ -2131,11 +2266,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const onMouseMove = (moveEvent) => {
             const x = getClientX(moveEvent) - rect.left;
-            const pos = Math.max(0, x / (PIXELS_PER_SECOND * state.zoomLevel));
+            let pos = Math.max(0, x / (PIXELS_PER_SECOND * state.zoomLevel));
+            if (shouldSnap(moveEvent)) pos = findSnap(pos, getSnapPoints());
+            else hideSnapGuide();
             setCursorPosition(pos);
         };
 
         const onMouseUp = () => {
+            hideSnapGuide();
             updateState({ isDraggingCursor: false });
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
@@ -2687,13 +2825,4 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Inicialização final
-    if (languageSelector) {
-        languageSelector.addEventListener('change', (e) => {
-            updateState({ language: e.target.value });
-        });
-    }
-
-    // Carrega traduções iniciais
-    initI18n();
 });
