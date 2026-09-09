@@ -41,6 +41,7 @@ No fluxo do ViralCutter, o arquivo `.ass` (Advanced Substation Alpha) é apenas 
 ## ✨ Principais Diferenciais
 
 *   **🌐 100% Web & Offline:** Roda no navegador (GitHub Pages). Seguro e privado.
+*   **🔗 Vídeo por Link:** Use um link direto de vídeo ou um vídeo público do YouTube como referência.
 *   **📱 Desktop e Mobile:** Interface responsiva com controles adaptados para telas pequenas.
 *   **👆 Edição por Toque:** Mova e redimensione os blocos diretamente com o dedo.
 *   **🔢 Lista Numerada:** Visualize e edite todas as legendas com timestamps de início e fim.
@@ -50,7 +51,11 @@ No fluxo do ViralCutter, o arquivo `.ass` (Advanced Substation Alpha) é apenas 
 *   **🧱 Multi-Track:** Edite múltiplas camadas simultaneamente.
 *   **🔍 Power Tools:** Busca e Substituição (Ctrl+F/H) com destaque visual.
 *   **🔊 Waveform:** Sincronia perfeita com visualização de áudio.
+*   **🌊 Sincronizar Áudio:** Ajusta os limites das legendas aos picos e silêncios da waveform, na camada ativa ou na seleção.
 *   **🔡 Edição Granular:** Ajuste o tempo de frases, palavras ou caracteres.
+*   **🔗 Mesclar por Pontuação:** Junta automaticamente fragmentos que pertencem à mesma frase, com limite opcional de caracteres.
+*   **🧲 Ímã Configurável:** Alinhamento preciso aos limites das legendas, com distância e tecla modificadora configuráveis.
+*   **✨ Acompanhamento de Reprodução:** Lista e prévia podem seguir o playback e destacar a palavra ativa.
 *   **🔄 Round-Trip:** Importe/Exporte JSON compatível com Adobe Premiere e WhisperX.
 *   **📌 Sticky Tracks:** Cabeçalhos organizados.
 *   **🌍 Internacionalização:** PT-BR / EN.
@@ -60,9 +65,9 @@ No fluxo do ViralCutter, o arquivo `.ass` (Advanced Substation Alpha) é apenas 
 Este projeto é hospedado no GitHub Pages e roda inteiramente no lado do cliente (Client-Side).
 
 1. **Acesse o link do projeto** (ou abra o arquivo `index.html` localmente).
-2. Carregue seu arquivo de mídia (Vídeo/Áudio) para referência.
+2. Carregue seu arquivo de mídia (Vídeo/Áudio) para referência ou use **Vídeo por link** com uma URL direta/YouTube.
 3. Importe seu arquivo de legenda (`.json`).
-4. Edite pela lista numerada ou pela timeline visual. No celular, arraste os blocos diretamente com o dedo.
+4. Edite pela lista numerada ou pela timeline visual. No celular, arraste os blocos diretamente com o dedo. Use **Sincronizar áudio** após carregar uma mídia para refinar os limites pela waveform.
 5. Exporte no formato desejado.
 
 ## ⌨️ Atalhos de Teclado

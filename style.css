@@ -53,6 +53,15 @@
   background: #5a6eb5;
 }
 
+.controls button.btn-sync {
+  background: #2563eb;
+  border: 1px solid #3b82f6;
+  color: #fff;
+  font-weight: bold;
+}
+
+.controls button.btn-sync:hover { background: #1d4ed8; }
+
 .controls .transport-active {
   background: #3a9d62;
 }

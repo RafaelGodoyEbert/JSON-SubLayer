@@ -33,6 +33,7 @@
                 <span>Escolher vídeo</span>
                 <input type="file" id="import-media" accept="video/*,audio/*" data-i18n-title="import_media">
             </label>
+            <button id="import-youtube-btn" type="button" title="Carregar vídeo por link direto ou do YouTube">🔗 Vídeo por link</button>
             <span id="media-file-name">Nenhuma mídia selecionada</span>
             <button id="add-subtitle" data-i18n="add_subtitle">Adicionar Legenda</button>
             <button id="save-json" data-i18n="save">Salvar</button>
@@ -40,6 +41,10 @@
             <button id="toggle-layout" data-i18n="mode_916" title="Alternar Modo 9:16">Modo 9:16</button>
             <button id="split-by-punctuation" data-i18n="split_punctuation"
                 title="Dividir por Pontuação (., !, ?, ...)">✂️ Punctuation</button>
+            <button id="merge-by-punctuation" type="button"
+                title="Mescla legendas adjacentes que terminam uma frase incompleta">🔗 Mesclar</button>
+            <button id="sync-waveform-btn" type="button" class="btn-sync"
+                title="Ajusta os limites das legendas conforme os picos e silêncios do áudio">🌊 Sincronizar áudio</button>
             <label style="color: white; margin-left: 20px;">
                 <input type="checkbox" id="auto-generate-chars" checked>
                 <span data-i18n="auto_chars">Gerar nível caractere automaticamente</span>
@@ -81,6 +86,9 @@
 
             <div id="video-preview" class="video-preview">
                 <video id="media-player" style="max-width: 100%; max-height: 100%;"></video>
+                <div id="youtube-player-container" style="display: none; position: absolute; inset: 0 0 44px; z-index: 1;">
+                    <div id="youtube-player" style="width: 100%; height: 100%;"></div>
+                </div>
                 <div id="video-placeholder" class="video-placeholder">
                     <div id="placeholder-subtitle-text" class="subtitle-text"></div>
                     <div data-i18n="no_media">Nenhum vídeo ou áudio carregado</div>

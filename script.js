@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const app = document.querySelector('.app');
     const importJsonBtn = document.getElementById('import-json');
     const importMediaBtn = document.getElementById('import-media');
+    const importYouTubeBtn = document.getElementById('import-youtube-btn');
     const mediaFileName = document.getElementById('media-file-name');
     const addSubtitleBtn = document.getElementById('add-subtitle');
     const saveJsonBtn = document.getElementById('save-json');
@@ -51,6 +52,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const zoomIndicator = document.getElementById('zoom-indicator');
     const trackSelector = document.getElementById('track-selector');
     const addTrackBtn = document.getElementById('add-track');
+    const mergePunctuationBtn = document.getElementById('merge-by-punctuation');
+    const syncWaveformBtn = document.getElementById('sync-waveform-btn');
 
     // Referências do Modal de Exportação
     const exportModal = document.getElementById('export-modal');
@@ -136,6 +139,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Internacionalização (i18n) ---
     let translations = {};
+    let ytPlayer = null;
+    let ytReady = false;
+    let ytVideoId = null;
 
     async function initI18n() {
         // 1. Tenta carregar da variável global (languages.js) - Funciona localmente sem server
@@ -792,6 +798,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
             textarea.addEventListener('input', handleTextChange);
+            textarea.addEventListener('keydown', event => {
+                const currentIndex = state.subtitles.findIndex(item => item.id === subtitle.id);
+                if (event.key === 'Backspace' && textarea.selectionStart === 0 && textarea.selectionEnd === 0 && currentIndex > 0) {
+                    event.preventDefault();
+                    mergeWithPrevious(currentIndex, textarea.value);
+                } else if (event.key === 'Delete' && textarea.selectionStart === textarea.value.length && textarea.selectionEnd === textarea.value.length && currentIndex < state.subtitles.length - 1) {
+                    event.preventDefault();
+                    mergeWithPrevious(currentIndex + 1);
+                } else if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.altKey) {
+                    event.preventDefault();
+                    splitAtTextCursor(subtitle.id, textarea.selectionStart, textarea.selectionEnd, textarea.value);
+                }
+            });
             wordsContainer.addEventListener('click', () => {
                 selectSubtitle();
                 textarea.hidden = false;
@@ -971,6 +990,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const file = e.target.files[0];
         if (!file) return;
 
+        removeYouTubePlayer();
+
         console.log('[Media] Arquivo selecionado:', {
             nome: file.name,
             tipo: file.type,
@@ -1002,6 +1023,20 @@ document.addEventListener('DOMContentLoaded', () => {
             await processAudioForWaveform(audioBuffer);
         } catch (err) {
             console.error('[Media] ERRO ao processar waveform:', err);
+        }
+    });
+
+    importYouTubeBtn?.addEventListener('click', () => {
+        const url = prompt('Cole um link do YouTube ou um link direto de vídeo (.mp4, .webm etc.):');
+        if (url === null || !url.trim()) return;
+        const value = url.trim();
+        const videoId = extractYouTubeId(value);
+        try {
+            if (videoId) loadYouTubeVideo(videoId);
+            else if (/^https?:\/\//i.test(value)) loadVideoLink(value);
+            else throw new Error('invalid');
+        } catch {
+            alert('Link inválido. Use uma URL http(s) de vídeo ou do YouTube.');
         }
     });
 
@@ -1072,6 +1107,72 @@ document.addEventListener('DOMContentLoaded', () => {
         const ms = Math.floor((seconds % 1) * 1000);
 
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')},${ms.toString().padStart(3, '0')}`;
+    }
+
+    function extractYouTubeId(url) {
+        return url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([\w-]{11})/)?.[1] || null;
+    }
+
+    function removeYouTubePlayer() {
+        ytVideoId = null;
+        ytReady = false;
+        try { ytPlayer?.stopVideo(); } catch {}
+        document.getElementById('youtube-player-container').style.display = 'none';
+    }
+
+    function loadVideoLink(url) {
+        removeYouTubePlayer();
+        if (state.mediaUrl?.startsWith('blob:')) URL.revokeObjectURL(state.mediaUrl);
+        updateState({ mediaUrl: url, mediaDuration: 0, waveformData: null, audioDuration: 0 });
+        mediaPlayer.src = url;
+        mediaPlayer.onloadedmetadata = () => {
+            updateState({ mediaDuration: mediaPlayer.duration || 0 });
+            renderTimeline();
+            updateTimecodeDisplays();
+        };
+        mediaPlayer.style.display = 'block';
+        mediaPlayer.load();
+        videoPlaceholder.style.display = 'none';
+        if (mediaFileName) mediaFileName.textContent = `Link: ${new URL(url).hostname}`;
+    }
+
+    function loadYouTubeVideo(videoId) {
+        ytVideoId = videoId;
+        mediaPlayer.pause();
+        mediaPlayer.removeAttribute('src');
+        mediaPlayer.style.display = 'none';
+        videoPlaceholder.style.display = 'none';
+        document.getElementById('youtube-player-container').style.display = 'block';
+        if (mediaFileName) mediaFileName.textContent = `YouTube: youtu.be/${videoId}`;
+        const create = () => {
+            ytPlayer = new YT.Player('youtube-player', {
+                width: '100%', height: '100%', videoId,
+                playerVars: { autoplay: 0, controls: 0, rel: 0, modestbranding: 1, disablekb: 1, enablejsapi: 1, origin: location.origin },
+                events: {
+                    onReady: event => {
+                        ytReady = true;
+                        const duration = event.target.getDuration();
+                        updateState({ mediaDuration: duration || 0 });
+                        renderTimeline();
+                        updateTimecodeDisplays();
+                    },
+                    onStateChange: event => {
+                        if (event.data === YT.PlayerState.ENDED && state.isPlaying) stopPlayback();
+                    },
+                    onError: () => alert('Este vídeo não permite reprodução incorporada. Tente um link direto de mídia.')
+                }
+            });
+        };
+        if (window.YT?.Player) create();
+        else {
+            if (!document.getElementById('youtube-iframe-api')) {
+                const script = document.createElement('script');
+                script.id = 'youtube-iframe-api';
+                script.src = 'https://www.youtube.com/iframe_api';
+                document.head.append(script);
+            }
+            window.onYouTubeIframeAPIReady = create;
+        }
     }
 
     function formatClock(seconds) {
@@ -1795,6 +1896,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function setCursorPosition(pos) {
         updateState({ cursorPosition: Math.max(0, pos) });
         renderCursor();
+        if (ytVideoId && ytReady && !state.isPlaying) {
+            try { ytPlayer.seekTo(state.cursorPosition, true); } catch {}
+        }
     }
 
     function updateTransportControls() {
@@ -1807,6 +1911,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function stopPlayback() {
         updateState({ isPlaying: false, playbackRate: 1 });
         mediaPlayer.pause();
+        if (ytVideoId && ytReady) {
+            try { ytPlayer.pauseVideo(); } catch {}
+        }
         updateTransportControls();
     }
 
@@ -1820,6 +1927,14 @@ document.addEventListener('DOMContentLoaded', () => {
         lastTime = performance.now();
         if (direction > 0 && mediaPlayer.src) mediaPlayer.play().catch(() => {});
         else mediaPlayer.pause();
+        if (ytVideoId && ytReady) {
+            try {
+                if (direction > 0) {
+                    ytPlayer.setPlaybackRate(rate);
+                    ytPlayer.playVideo();
+                } else ytPlayer.pauseVideo();
+            } catch {}
+        }
         updateTransportControls();
         if (!alreadyRunning) playbackLoop();
     }
@@ -1849,6 +1964,10 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (mediaPlayer.src) {
             if (!state.isDraggingCursor) {
                 setCursorPosition(mediaPlayer.currentTime);
+            }
+        } else if (ytVideoId && ytReady) {
+            if (!state.isDraggingCursor) {
+                try { setCursorPosition(ytPlayer.getCurrentTime()); } catch { setCursorPosition(state.cursorPosition + delta); }
             }
         } else if (!state.isDraggingCursor) {
             setCursorPosition(state.cursorPosition + delta * state.playbackRate);
@@ -1984,6 +2103,61 @@ document.addEventListener('DOMContentLoaded', () => {
 
         updateSubtitles(newSubs);
         updateState({ selectedSubtitles: [] });
+    }
+
+    function mergeWithPrevious(index, textOverride = null) {
+        if (index <= 0 || index >= state.subtitles.length) return;
+        const previous = state.subtitles[index - 1];
+        const current = state.subtitles[index];
+        const currentText = textOverride === null ? current.text : textOverride;
+        const text = `${(previous.text || '').trimEnd()} ${(currentText || '').trimStart()}`.trim();
+        const merged = {
+            ...previous,
+            end: Math.max(previous.end, current.end),
+            text,
+            words: [...getSubtitleWords(previous), ...getSubtitleWords({ ...current, text: currentText })],
+            chars: [...(previous.chars || []), ...(current.chars || [])]
+        };
+        const subtitles = [...state.subtitles];
+        subtitles.splice(index - 1, 2, merged);
+        updateSubtitles(subtitles);
+        updateState({ selectedSubtitles: [merged], lastSelected: merged });
+        renderPreviewArea(true);
+    }
+
+    function splitAtTextCursor(id, selectionStart, selectionEnd, value) {
+        const index = state.subtitles.findIndex(subtitle => subtitle.id === id);
+        if (index === -1) return;
+        const subtitle = state.subtitles[index];
+        const beforeText = value.slice(0, selectionStart).trim();
+        const afterText = value.slice(selectionEnd).trim();
+        if (!beforeText || !afterText) return;
+        const allWords = getSubtitleWords(subtitle);
+        const beforeCount = beforeText.split(/\s+/).filter(Boolean).length;
+        const splitTime = allWords[beforeCount - 1] && allWords[beforeCount]
+            ? (allWords[beforeCount - 1].end + allWords[beforeCount].start) / 2
+            : subtitle.start + (subtitle.end - subtitle.start) * beforeText.length / value.length;
+        const before = {
+            ...subtitle,
+            id: generateId(),
+            end: Number(splitTime.toFixed(3)),
+            text: beforeText,
+            words: getSubtitleWords({ ...subtitle, end: splitTime, text: beforeText }),
+            chars: []
+        };
+        const after = {
+            ...subtitle,
+            id: generateId(),
+            start: Number(splitTime.toFixed(3)),
+            text: afterText,
+            words: getSubtitleWords({ ...subtitle, start: splitTime, text: afterText }),
+            chars: []
+        };
+        const subtitles = [...state.subtitles];
+        subtitles.splice(index, 1, before, after);
+        updateSubtitles(subtitles);
+        updateState({ selectedSubtitles: [after], lastSelected: after });
+        renderPreviewArea(true);
     }
 
     function handleMerge() {
@@ -2304,6 +2478,95 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (splitPunctuationBtn) {
         splitPunctuationBtn.addEventListener('click', handleSplitByPunctuation);
+    }
+    if (mergePunctuationBtn) {
+        mergePunctuationBtn.addEventListener('click', handleMergeByPunctuation);
+    }
+    if (syncWaveformBtn) {
+        syncWaveformBtn.addEventListener('click', handleSyncWaveform);
+    }
+
+    function handleMergeByPunctuation() {
+        const input = prompt('Limite máximo de caracteres após mesclar (0 = sem limite):', '80');
+        if (input === null) return;
+        const maxLength = Number.parseInt(input, 10) || 0;
+        const track = state.activeTrack;
+        const otherTracks = state.subtitles.filter(subtitle => (subtitle.track || 'Track 1') !== track);
+        const subtitles = state.subtitles
+            .filter(subtitle => (subtitle.track || 'Track 1') === track)
+            .sort((a, b) => a.start - b.start);
+        const merged = [];
+        for (let index = 0; index < subtitles.length; index++) {
+            let current = subtitles[index];
+            while (index + 1 < subtitles.length && !/[.!?…。！？]$/.test((current.text || '').trimEnd())) {
+                const next = subtitles[index + 1];
+                const text = `${(current.text || '').trimEnd()} ${(next.text || '').trimStart()}`.trim();
+                if (maxLength && text.length > maxLength) break;
+                current = {
+                    ...current,
+                    id: generateId(),
+                    end: Math.max(current.end, next.end),
+                    text,
+                    words: [...(current.words || []), ...(next.words || [])],
+                    chars: [...(current.chars || []), ...(next.chars || [])]
+                };
+                index++;
+            }
+            merged.push(current);
+        }
+        updateSubtitles([...otherTracks, ...merged].sort((a, b) => a.start - b.start));
+    }
+
+    function handleSyncWaveform() {
+        if (!state.waveformData?.length || !state.audioDuration) {
+            alert('Carregue uma mídia com áudio antes de sincronizar.');
+            return;
+        }
+        const track = state.activeTrack;
+        const selectedIds = new Set(state.selectedSubtitles.map(subtitle => subtitle.id));
+        const trackSubs = state.subtitles.filter(subtitle => (subtitle.track || 'Track 1') === track).sort((a, b) => a.start - b.start);
+        const targets = selectedIds.size ? trackSubs.filter(subtitle => selectedIds.has(subtitle.id)) : trackSubs;
+        if (!targets.length || (!selectedIds.size && !confirm(`Sincronizar as ${targets.length} legendas da camada ativa?`))) return;
+
+        const peaks = state.waveformData;
+        const step = state.audioDuration / peaks.length;
+        const amplitude = time => {
+            const peak = peaks[Math.max(0, Math.min(peaks.length - 1, Math.floor(time / step)))];
+            return peak ? Math.max(0, peak.max - peak.min) : 0;
+        };
+        const floor = peaks.reduce((sum, peak) => sum + Math.max(0, peak.max - peak.min), 0) / peaks.length;
+        const threshold = Math.max(.045, floor * 1.6);
+        const targetIds = new Set(targets.map(subtitle => subtitle.id));
+        const adjusted = trackSubs.map((subtitle, index) => {
+            if (!targetIds.has(subtitle.id)) return subtitle;
+            const minStart = index ? trackSubs[index - 1].end + .05 : 0;
+            const maxEnd = index < trackSubs.length - 1 ? trackSubs[index + 1].start - .05 : state.audioDuration;
+            let start = subtitle.start;
+            let end = subtitle.end;
+            for (let time = subtitle.start; time >= minStart && subtitle.start - time <= 1; time -= step) {
+                if (amplitude(time) < threshold) { start = time + step; break; }
+            }
+            for (let time = subtitle.end; time <= maxEnd && time - subtitle.end <= 1; time += step) {
+                if (amplitude(time) < threshold) { end = time; break; }
+            }
+            start = Math.max(minStart, Math.min(start, end - .35));
+            end = Math.min(maxEnd, Math.max(end, start + .35));
+            const oldDuration = Math.max(.01, subtitle.end - subtitle.start);
+            const newDuration = end - start;
+            return {
+                ...subtitle,
+                start: Number(start.toFixed(3)),
+                end: Number(end.toFixed(3)),
+                words: (subtitle.words || []).map(word => ({
+                    ...word,
+                    start: Number((start + (word.start - subtitle.start) / oldDuration * newDuration).toFixed(3)),
+                    end: Number((start + (word.end - subtitle.start) / oldDuration * newDuration).toFixed(3))
+                })),
+                chars: []
+            };
+        });
+        const others = state.subtitles.filter(subtitle => (subtitle.track || 'Track 1') !== track);
+        updateSubtitles([...others, ...adjusted].sort((a, b) => a.start - b.start));
     }
 
     function handleSplitByPunctuation() {

@@ -42,6 +42,7 @@ In the ViralCutter workflow, the `.ass` file (Advanced Substation Alpha) is just
 ## ✨ Key Features
 
 *   **🌐 100% Web & Offline:** Runs directly in the browser (GitHub Pages). Secure and private.
+*   **🔗 Video by Link:** Use a direct video URL or a public YouTube video as reference.
 *   **📱 Desktop and Mobile:** Responsive interface with controls adapted to small screens.
 *   **👆 Touch Editing:** Move and resize subtitle blocks directly with your finger.
 *   **🔢 Numbered List:** View and edit every subtitle with its start and end timestamps.
@@ -51,7 +52,11 @@ In the ViralCutter workflow, the `.ass` file (Advanced Substation Alpha) is just
 *   **🧱 Multi-Track:** Edit multiple layers simultaneously.
 *   **🔍 Power Tools:** Search and Replace (Ctrl+F/H) with visual highlighting.
 *   **🔊 Waveform:** Perfect sync with audio visualization.
+*   **🌊 Audio Sync:** Adjust subtitle boundaries to waveform peaks and silences, for the active track or selection.
 *   **🔡 Granular Editing:** Adjust timing of phrases, words, or individual characters.
+*   **🔗 Merge by Punctuation:** Automatically joins fragments that belong to the same sentence, with an optional character limit.
+*   **🧲 Configurable Snap:** Precisely aligns subtitle boundaries, with adjustable distance and modifier key.
+*   **✨ Playback Following:** The list and preview can follow playback and highlight the active word.
 *   **🔄 Round-Trip:** Import/Export JSON compatible with Adobe Premiere and WhisperX.
 *   **📌 Sticky Tracks:** Organized headers.
 *   **🌍 Internationalization:** PT-BR / EN.
@@ -61,9 +66,9 @@ In the ViralCutter workflow, the `.ass` file (Advanced Substation Alpha) is just
 This project is hosted on GitHub Pages and runs entirely on the client-side.
 
 1.  **Access the project link** (or open `index.html` locally).
-2.  Load your media file (Video/Audio) for reference.
+2.  Load your media file (Video/Audio) for reference or use **Video by Link** with a direct URL/YouTube.
 3.  Import your subtitle file (`.json`).
-4.  Edit through the numbered list or the visual timeline. On mobile, drag blocks directly with your finger.
+4.  Edit through the numbered list or the visual timeline. On mobile, drag blocks directly with your finger. Use **Audio Sync** after loading media to refine boundaries from the waveform.
 5.  Export in the desired format.
 
 ## ⌨️ Keyboard Shortcuts
